@@ -1,6 +1,6 @@
 @font-face {
     font-family: "Tamzen";
-    src: url("tamzen6x12r.woff2") format("woff2");
+    src: url("tamzen10x20r.woff2") format("woff2");
     font-weight: normal;
     font-style: normal;
 }
@@ -8,7 +8,7 @@ body {
     background-color: #1a0800;
     color: #ff8c1a;
     font-family: "Tamzen", monospace;
-    font-size: 24px;
+    font-size: 20px;
     line-height: 1.4;
     max-width: 80ch;
     margin: 2em auto;
@@ -16,7 +16,7 @@ body {
 }
 pre, code, kbd, samp {
     font-family: "Tamzen", monospace;
-    font-size: 24px;
+    font-size: 20px;
 }
 a {
     color: #ff8c1a;
