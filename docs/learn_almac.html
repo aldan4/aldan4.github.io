@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>learn almac</title>
+<meta name="author" content="ortfero">
+<meta name="year" content="2026">
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<h1>learn almac</h1>
+<address>ortfero</address>
+<p>almac is the language you write programs in on aldan. it's small,
+imperative, and tries not to do anything you didn't ask for —
+nothing is allocated, nothing is collected, and nothing fails
+without saying so. this walks you through it in fifteen short
+sections. when you want the exact rules, the formal grammar lives
+in =&gt; almac_report.moff almac language report.</p>
+<h2>1. modules</h2>
+<p>every .alm file is one module. its name is the file's basename —
+`notes.alm` becomes a module called `notes`, and that's how other
+modules refer to it.</p>
+<p>the layout is fixed. imports first if you have any. then your
+public declarations. then `implementation`, and below that the
+bodies of those declarations plus anything else that's nobody
+else's business.</p>
+<pre>
+[ import ... ]
+{ declarations }          -- public
+[ implementation
+  { definitions } ]       -- private
+</pre>
+<p>importing is a list of paths without the `.alm` extension:</p>
+<pre>
+import 'marshal, 'random
+</pre>
+<h2>2. public declarations</h2>
+<p>a const is a name for a value known at compile time — a literal,
+another const, or a type (in which case you get the type's size in
+bytes).</p>
+<pre>
+const max_items = 64
+const greeting  = &quot;hello, aldan&quot;
+const pi_third  = 1.047197551
+const u8_size   = u8           -- s64, value 1
+</pre>
+<p>faults are named conditions you can raise. the language reserves
+nine of them — invalid_format, out_of_range, buffer_overflow,
+operation_failed, invalid_argument, open_failed, read_failed,
+write_failed, seek_failed — and you can add your own:</p>
+<pre>
+fault disk_full, no_such_user
+</pre>
+<p>`type` names a type. you only have to do this when the type
+refers to itself by pointer — otherwise the structure is fine
+inline wherever you use it.</p>
+<pre>
+type byte_count s64
+type bitset     b64
+type buffer     [256]u8
+type lineview   []u8
+</pre>
+<p>function prototypes go up here too. the bodies live below
+`implementation`.</p>
+<pre>
+fn add s64 (a s64, b s64)
+fn fill (buffer&amp; []u8, c u8)
+fn read_line (h file.id, out&amp; string)
+</pre>
+<h2>3. implementation</h2>
+<p>everything from `implementation` down is private. you can mix
+declarations and definitions freely below it; this is where most
+of the code lives in any non-trivial module.</p>
+<pre>
+implementation
+</pre>
+<h2>4. vocabulary</h2>
+<p>identifiers are a letter followed by letters or digits.
+underscores count as letters.</p>
+<p>there are 28 reserved words:</p>
+<pre>
+fn      var       const          type       record
+enum    union     fault          raise      raises
+defer   on        for            if         else
+return  break     continue       inline     import
+implementation   as              mod        asm
+true    false     none
+</pre>
+<p>the operators:</p>
+<pre>
+=  ==  !=  &lt;  &lt;=  &gt;  &gt;=  +  -  *  /  +=  -=
+^  &amp;  |  .  ,  ;  :  (  )  [  ]  {  }
+</pre>
+<p>a few do double duty:</p>
+<ul>
+<li>`^` is a pointer prefix on types (`^node`) and a deref postfix</li>
+</ul>
+<p>  on values (`p^`).</p>
+<ul>
+<li>`&amp;` marks an out-parameter in a signature and the matching</li>
+</ul>
+<p>  argument at the call site.</p>
+<ul>
+<li>`|` separates variants in enums and tagged unions.</li>
+</ul>
+<p>bodies and statements use `:` and `;`. `:` opens a compound (a
+function body, a `for` body, an `if` branch). every simple
+statement ends with its own `;`. the compound itself also closes
+with `;`. so a one-statement body looks like `: stmt; ;` — the
+last `;` belongs to the body, not the statement. you can run them
+together: `stmt;;`. nested closes stack the same way: `;;;`.</p>
+<h2>5. scalar types</h2>
+<pre>
+bool       1 byte
+s64        signed 64-bit integer
+u8         unsigned 8-bit integer
+f64        ieee-754 double
+address    untyped 8-byte machine address
+b64        64-bit bitfield
+string     alias for []u8
+integer    the type of an unconverted number literal
+</pre>
+<p>`true`, `false`, and `none` are the literals you have. `none` is
+the nil pointer — it slots into any pointer type or into
+`address`.</p>
+<p>`integer` is the type a number wears until something pins it
+down. `count = 0` works whatever `count`'s type is, because the
+`0` adopts that type.</p>
+<pre>
+fn scalar_demo ()
+    flag bool, count s64, byte u8,
+    ratio f64, bits b64:
+    flag  = true;
+    count = -123;
+    byte  = 0xff;
+    ratio = 6.28;
+    bits  = 0xdeadbeef;;
+</pre>
+<h2>6. records, pointers, self-reference</h2>
+<p>a record is a struct with named fields and natural alignment. it
+can hold a pointer to itself — and that's the one case where you
+have to give the type a name before using it (otherwise the
+recursion has nothing to refer to).</p>
+<p>pointers are 8 bytes. they're either `none` or the address of a
+value of their base type. deref is postfix `^`.</p>
+<pre>
+type node record:
+    value s64,
+    next  ^node;             -- self-pointer
+
+fn list_head_value s64 (head ^node):
+    if head == none then
+        return 0;
+    return head^.value;;     -- deref, then field
+</pre>
+<h2>7. arrays and slices</h2>
+<p>`[n]t` is a fixed-length array. `[]t` is a slice — a (data,
+length) pair, 16 bytes, 8-byte aligned. an array becomes a slice
+wherever a slice is expected; no cast needed.</p>
+<p>`a[lo:hi]` slices a range. the storage is shared — the slice is a
+view, not a copy. on a `b64` the same syntax pulls out the bits in
+positions lo..hi-1.</p>
+<p>assigning slices copies the (data, length) pair, not the
+elements.</p>
+<pre>
+fn slice_demo ()
+    fixed [4]s64, view []s64, tail []s64:
+    fixed[0] = 1; fixed[1] = 2;
+    fixed[2] = 3; fixed[3] = 4;
+    view = fixed;                   -- array -&gt; slice
+    tail = view[1:3];               -- borrows fixed[1..3]
+    say &quot;view len: &quot;, (length view), &quot;tail len: &quot;, (length tail);;
+</pre>
+<h2>8. enums and tagged unions</h2>
+<p>an enum is a list of named tags. it's `u8`-sized, and distinct
+from every other enum — you can't accidentally mix them.</p>
+<p>a tagged union is the same idea with a payload per variant: tag at
+offset 0, payload area after, sized to the biggest variant. read
+the tag with `u.tag`. read or write a variant's payload with
+`u.v`. writing to `u.tag` switches the active variant.</p>
+<pre>
+type colour enum red | green | blue
+
+type shape union
+  point
+| circle : radius f64;
+| rect   : width f64, height f64;
+
+fn area f64 (s shape):
+    if s.tag == shape.circle then
+        return float.pi * s.circle.radius * s.circle.radius;
+    else if s.tag == shape.rect then
+        return s.rect.width * s.rect.height;
+    return 0.0;;
+</pre>
+<h2>9. variables</h2>
+<p>module-level `var` lives in the module's bss, zero-initialised.
+function locals appear between the signature and the body's `:` as
+a plain comma-separated list of `name type` pairs — no `var` (which
+is reserved for module-level). locals aren't initialised; assign
+before use.</p>
+<pre>
+var instances s64
+var palette   [3]colour
+</pre>
+<h2>10. functions</h2>
+<p>a function is `fn name signature [locals] body`. the signature is
+an optional return type, the parameter list in parens, and
+optional `inline` and `raises` markers. locals come right after,
+then the body.</p>
+<pre>
+fndef    = &quot;fn&quot; ident signature [ vardefs ]
+           ( body | asmbody ) .
+body     = &quot;:&quot; [ stmts ] { handler } &quot;;&quot; .
+handler  = &quot;on&quot; ident &quot;:&quot; stmts .
+stmts    = stmt { stmt } .
+stmt     = return | defer | raise | for | if | break | continue
+         | ( expr &quot;;&quot; ) .
+return   = &quot;return&quot; expr &quot;;&quot; .
+vardefs  = vardef { &quot;,&quot; vardef } .
+vardef   = ident type .
+</pre>
+<p>`var` is the giveaway between a function with no locals (`fn foo
+():`) and a forward declaration followed by a module-level var
+(`fn foo () \n var x s64`). after a signature, a leading `var`
+means &quot;this is a prototype; the var belongs to the surrounding
+scope.&quot;</p>
+<p>remember: each simple statement carries its own `;`, and the
+compound's closing `;` is its own token. a one-statement body
+glues both: `: stmt;;`. compound-form statements (`for`, `if`)
+already include their close — they don't need an extra `;` in the
+enclosing compound.</p>
+<pre>
+fn add s64 (a s64, b s64):
+    a + b;;
+
+fn greet (who string):
+    say &quot;hi,&quot;, who;;
+</pre>
+<h3>10.1 out-parameters</h3>
+<p>put `&amp;` after a parameter name and the caller must supply a
+writable lvalue with `&amp;`. without the `&amp;`, the parameter is
+read-only inside the function.</p>
+<p>scalars pass by value, aggregates always pass by reference — the
+`&amp;` is about *writability*, not how things get there.</p>
+<pre>
+fn fill (buffer&amp; []u8, c u8)
+    i s64:
+    i = 0; for i != length buffer; i += 1:
+        buffer[i] = c;;;
+
+fn fill_caller ()
+    page [256]u8:
+    fill page&amp;, 0x20;;        -- `&amp;` at the call site too
+</pre>
+<h3>10.2 returning aggregates</h3>
+<p>a function can't return an aggregate (array, record, slice, or
+tagged union) by value. when you need one out, pass it as an
+out-param and write into it.</p>
+<pre>
+type point record: x f64, y f64;
+
+fn make_point (p&amp; point, x f64, y f64):
+    p.x = x;
+    p.y = y;;
+</pre>
+<h3>10.3 inline functions</h3>
+<p>`inline` expands the body at the call site. that means the body
+can't declare locals or use `return`, `defer`, `raise`, `for`,
+`break`, or `continue` — just an expression. `inline` is only for
+definitions; you can't have a first-class `fn ... inline` type.</p>
+<pre>
+fn min2 s64 (a s64, b s64) inline:
+    if a &lt; b then a; else b;;
+</pre>
+<h3>10.4 forward declarations</h3>
+<p>a signature-only declaration binds the name with no code. a later
+definition with the same signature fills in the body. a later
+definition with a *different* signature replaces the binding —
+which is sometimes what you want at the REPL but a footgun
+elsewhere.</p>
+<pre>
+fn read_line (h file.id, out&amp; string)
+    n s64:
+    n = length out;
+    say &quot;read into buffer of length &quot;, n;;
+</pre>
+<h3>10.5 assembly bodies</h3>
+<p>`asm : ... ;` hands the body to the rv64 assembler verbatim. the
+compiler emits prologue and epilogue around it.</p>
+<pre>
+fn nop () asm: nop;
+</pre>
+<h2>11. expressions</h2>
+<p>operator precedence, tightest first: postfix (call, index, field,
+deref), cast (`as`), unary `-`, multiplicative (`*`, `/`, `mod`),
+additive (`+`, `-`), relational (`==`, `!=`, `&lt;`, `&lt;=`, `&gt;`, `&gt;=`),
+assignment (`=`, `+=`, `-=`).</p>
+<p>function calls have no parentheses around their arguments — the
+arg list starts at the first atom after the callee and ends at the
+first token that isn't an atom or a comma:</p>
+<pre>
+and b0, b1, ...     or b0, b1, ...     not b
+</pre>
+<p>a few rules:</p>
+<ul>
+<li>no chained assignment.</li>
+<li>`+=` and `-=` are scalars only.</li>
+<li>aggregates aren't assignable as a whole — update field by field.</li>
+<li>args can carry postfixes (index, field, deref) directly; nested</li>
+</ul>
+<p>  calls and binary operators need parens: `f (a + b)`, `f (g x)`.</p>
+<pre>
+fn expr_demo s64 (x s64, y s64)
+    z s64, ok bool:
+    z = (x + y) * 2;
+    z += 1;
+    ok = and (x &gt; 0), (y &gt; 0);
+    if not ok then
+        return -1;
+    return z mod 10;;
+</pre>
+<h3>11.1 if as an expression</h3>
+<p>`if` is both a statement and an expression. as an expression every
+branch has to be there and they all have to yield the same type:</p>
+<pre>
+fn sign s64 (x s64):
+    return if x &gt; 0 then 1
+        else if x &lt; 0 then -1
+        else 0;;
+</pre>
+<h3>11.2 casts</h3>
+<p>`as` is the explicit conversion. it covers:</p>
+<pre>
+integer &lt;-&gt; integer
+integer &lt;-&gt; f64           (f64 -&gt; int truncates toward zero)
+scalar   -&gt; bool          (non-zero is true)
+[n]t     -&gt; []t           (array to slice)
+pointer &lt;-&gt; address
+</pre>
+<p>widening from `s64` sign-extends; widening from `u8` zero-extends.
+narrowing to `u8` keeps the low 8 bits.</p>
+<pre>
+fn cast_demo ()
+    c u8, n s64, x f64, flag bool:
+    c = 200;
+    n = c as s64;          -- zero-extended
+    x = n as f64;
+    flag = c as bool;;     -- non-zero -&gt; true
+</pre>
+<h3>11.3 bitfields</h3>
+<p>`b64` supports two postfix forms — `b[i]` for a single bit (yields
+`bool`) and `b[i:j]` for a range of bits (yields a `b64`). the
+`bit` module has the rest: `shil`, `shir`, `incl`, `excl`.</p>
+<pre>
+fn bitfield_demo b64 (b b64):
+  if b[7] then
+    return b[0:8];         -- low byte
+  return 0;;
+</pre>
+<h2>12. statements</h2>
+<h3>12.1 for</h3>
+<p>`for` is the only loop. both the condition and the step are
+optional. dropping the condition gives an infinite loop. `break`
+exits; `continue` jumps to the step (or the condition, if there's
+no step).</p>
+<pre>
+fn count_down (n s64)
+    i s64:
+    i = n; for i &gt; 0; i -= 1:
+        say i;;;
+
+fn global_should_stop bool ():
+    return false;;
+
+fn forever ():
+    for:
+        if global_should_stop then
+            break;;;
+</pre>
+<h3>12.2 defer</h3>
+<p>`defer expr` schedules `expr` to run when the function returns —
+whether normally or via a fault. defers run in reverse order, last
+registered first. up to eight per function. if the deferred
+expression is a function value, it's auto-called with no args.</p>
+<pre>
+fn open_and_print (path string) raises
+    h file.id:
+    h = file.open path;
+    defer file.close h;
+    cat path;;
+</pre>
+<h3>12.3 raise and handlers</h3>
+<p>`raise x` abandons the current function with fault `x`. registered
+defers run first, then control transfers to a handler — if there
+is one — or propagates to the caller.</p>
+<p>`raises` is part of the function's type. you have to mark a
+function `raises` if (and only if) its body either raises or calls
+another raising function. the compiler will tell you if you forget
+or if you put one where it isn't needed.</p>
+<p>handlers live at the end of a function body, before the body's
+closing `;`. each one is `on fault: stmts` — no own close, the
+body's `;` closes both the last handler's stmts and the body.
+completing a handler converts the fault into a normal return.</p>
+<pre>
+fn parse_or_zero u8 (s string) raises
+    v u8:
+    v = byte.parse s;
+    return v;
+on invalid_format:
+    return 0;;
+
+fn save_user (name string) raises:
+    if length name == 0 then
+        raise invalid_argument;
+    if instances &gt;= max_items then
+        raise disk_full;
+    instances += 1;;
+</pre>
+<h2>13. things you don't have to import</h2>
+<p>these are always in scope:</p>
+<pre>
+new n               allocate n bytes, return the address
+dispose p&amp;          free a block from new
+length x            element count of an array or slice
+and / or / not      short-circuit logical ops
+say / sayin         format and print, with or without a newline
+ask prompt, buf&amp;, a0&amp;, ...        prompt, read a line, parse
+cd, ls, mkdir, rmdir, rm, cat, cp shell-style file ops; raise
+                                  operation_failed on failure
+</pre>
+<pre>
+fn predef_demo () raises
+    buffer address, age s64, reply [64]u8:
+    buffer = new 1024;
+    defer dispose buffer&amp;;
+    say &quot;hello,&quot;, (length &quot;hello,&quot;), &quot; bytes long&quot;;
+    ask &quot;how old? &quot;, reply&amp;, age&amp;;;
+</pre>
+<h2>14. standard modules</h2>
+<p>import these by name and you get their members. the report has the
+full signatures; here's the elevator pitch for each:</p>
+<pre>
+byte       single-byte memory and conversion
+bytes      operations on byte slices — clear, copy, move,
+           equal, compare, parse, format. copy is a forward
+           memcpy; move is safe for overlapping ranges.
+bit        b64 shifts and range include/exclude
+signed     s64 arithmetic, conversion, limits
+float      f64 arithmetic, trig/log/exp, constants
+boolean    parse and format for bool
+random     splitmix64 prng
+clock      monotonic timing
+time       wall clock and calendar decomposition
+file       open, read, write, seek, close, etc.
+directory  make, remove, query
+marshal    variadic textual serialisation
+screen     alternate-screen tty, keyboard input
+sound      audio playback
+</pre>
+<p>read a whole file into a buffer:</p>
+<pre>
+fn read_all (path string, out&amp; string) raises
+    h file.id, size s64:
+    size = file.size path;
+    if size &gt; length out then
+        raise buffer_overflow;
+    h = file.open path;
+    defer file.close h;
+    file.read h, out&amp;;;
+</pre>
+<p>time a block:</p>
+<pre>
+fn time_loop s64 ()
+    t clock.tick, i s64:
+    t = clock.now;
+    i = 0; for i &lt; 1000; i += 1:
+        -- ... work ...
+    ;
+    return clock.elapsed_us t;;
+</pre>
+<h2>15. putting it together</h2>
+<p>a program is a module with an entry function the host calls — by
+convention, `run`. this one reads a name, greets, and stops on
+empty input:</p>
+<pre>
+fn run () raises
+    name [64]u8:
+    for:
+        ask &quot;name? &quot;, name&amp;;
+        if length name == 0 then
+            break;
+        say &quot;welcome, &quot;, name;;;
+</pre>
+<p>that's the language. when you want chapter and verse, the formal
+grammar is in =&gt; almac_report.moff almac language report.</p>
+</body>
+</html>

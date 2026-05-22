@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>almac language report</title>
+<meta name="author" content="ortfero">
+<meta name="year" content="2026">
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<h1>almac language report</h1>
+<address>ortfero</address>
+<h2>1. introduction</h2>
+<p>almac (algorithmic language for machine computation) is a small
+imperative programming language for the aldan system. the language
+emphasises a small grammar, explicit memory layout, value semantics
+for aggregates, and explicit propagation of faults.</p>
+<p>a compilation unit is a module. a module is a sequence of
+declarations followed by an optional implementation section of
+definitions. a small fixed set of primitive types, predefined
+procedures, and standard modules is available at every top level;
+they are described in appendix b.</p>
+<h2>2. syntax</h2>
+<p>the syntax of almac is specified in an extended backus-naur form. a
+production has the form</p>
+<pre>
+production = expression .
+</pre>
+<p>the meta-symbols are</p>
+<ul>
+<li>= defines a production</li>
+<li>| alternative</li>
+<li>( ) grouping</li>
+<li>[ ] optional part, zero or one occurrence</li>
+<li>{ } zero or more repetitions</li>
+<li>&quot;x&quot; the terminal symbol x</li>
+</ul>
+<p>identifiers that begin with a lower-case letter denote non-terminals.
+terminals are either quoted literals or the token names introduced
+in section 3.</p>
+<h2>3. vocabulary</h2>
+<p>a token is a keyword, an identifier, a number, a character, a
+string, an operator, or a delimiter. tokens are separated by blanks,
+line breaks, and comments. a comment begins with either the
+character # or the digraph -- and extends to the end of the line.</p>
+<p>an identifier is a letter followed by any sequence of letters and
+digits. the underscore counts as a letter.</p>
+<pre>
+ident = letter { letter | digit } .
+</pre>
+<p>the following 28 words are reserved and may not be used as
+identifiers:</p>
+<pre>
+as      asm      break      const           continue   defer
+else    enum     false      fault           fn         for
+if      implementation      import          inline     mod
+none    on       raise      raises          record     return
+then    true     type       union           var
+</pre>
+<p>a number is either an integer literal, a hexadecimal literal, or a
+floating-point literal.</p>
+<pre>
+integer = digit { digit } .
+hex     = &quot;0&quot; &quot;x&quot; hexdigit { hexdigit } .
+fp      = digit { digit } &quot;.&quot; digit { digit } .
+</pre>
+<p>a character literal is a single byte enclosed in apostrophes and has
+type u8. a string literal is a sequence of bytes enclosed in
+quotation marks and has type string. a short-string literal is an
+abbreviated form for strings that contain no whitespace: a leading
+apostrophe followed by the string content, with no closing
+apostrophe. its content ends at the first whitespace character or at
+one of the closing structural tokens , ) ] } . the characters ' &quot; `
+( [ { inside a short-string are errors — they almost always indicate
+a typo and the verbose &quot;...&quot; form should be used instead. examples:</p>
+<pre>
+'hello
+'out/build.alm
+'http://x.io:8080/q
+</pre>
+<p>short-string and character literals share the leading apostrophe;
+they are distinguished by the byte that immediately follows the
+content. 'X' (one byte then closing apostrophe) is a character
+literal of value X; 'Xy is a short-string of content &quot;Xy&quot;.</p>
+<p>the boolean literals are true and false. the literal none denotes
+the nil pointer and implicitly converts to any pointer type and to
+address.</p>
+<p>operators and delimiters are</p>
+<pre>
+=  ==  !=  &lt;  &lt;=  &gt;  &gt;=  +  -  *  /  +=  -=
+^  &amp;  |  .  ,  ;  :  (  )  [  ]  {  }
+</pre>
+<p>the token ^ denotes a pointer prefix when placed before a type and
+a dereference when placed after a value. the token &amp; marks an
+out-parameter in a signature and the argument supplied for one. the
+token | separates the variants of an enumeration or a tagged union.
+a compound statement is opened by : and closed by ; (see 9.3).
+each simple statement — assignment, return, defer, raise, break,
+continue — is itself terminated by ;. the closing ; of a compound
+is distinct from the terminator of its last statement, so a body
+with one statement looks like `: stmt; ;`. the ; also separates the
+condition from the step in a for loop (see 9.5).</p>
+<p>a minus sign immediately followed by a digit begins a negative
+number literal; a minus sign immediately followed by another minus
+sign begins a line comment; a minus sign followed by any other
+character denotes binary subtraction or unary negation. an
+expression of the form x-5 must therefore be written with a blank
+between the operator and the digit.</p>
+<h2>4. declarations and scope rules</h2>
+<p>every identifier must be declared before it is used. declarations at
+the top level of a module are visible throughout the module; if
+they precede the keyword implementation they are also exported
+to importers. a scope is opened by the body of a function; nested
+scopes may redefine an outer name for the remainder of the body.</p>
+<pre>
+declaration = functionproto | typedecl | vardecl | constdecl
+            | faultdecl .
+</pre>
+<p>a function prototype consists of a name and a signature with no
+body and binds the name to a function value with no code address.
+a later matching definition supplies the address. non-matching
+later definitions replace the binding entirely; see 10.3.</p>
+<h2>5. constant declarations</h2>
+<p>a constant declaration binds a name to a compile-time value.</p>
+<pre>
+constdecl = &quot;const&quot; ident &quot;=&quot; constexpr .
+constexpr = &quot;true&quot; | &quot;false&quot; | &quot;none&quot;
+          | integer | hex | fp | character | string
+          | qualident .
+</pre>
+<p>if the right-hand side is a type identifier, the constant takes the
+size of the type in bytes and has type s64. if it is another
+constant identifier, the new constant receives that constant's
+value and type.</p>
+<h2>6. type declarations</h2>
+<p>a type declaration binds a name to a type.</p>
+<pre>
+typedecl = &quot;type&quot; ident type .
+type     = qualident
+         | &quot;^&quot; type
+         | &quot;[&quot; [ constexpr ] &quot;]&quot; type
+         | recordtype
+         | enumtype
+         | uniontype
+         | functiontype .
+</pre>
+<p>a named type may refer to itself only through a pointer.</p>
+<h3>6.1 basic types</h3>
+<p>almac has the following built-in scalar types.</p>
+<ul>
+<li>bool — logical, 1 byte</li>
+<li>s64 — signed 64-bit integer</li>
+<li>u8 — unsigned 8-bit integer</li>
+<li>f64 — ieee-754 double-precision float</li>
+<li>address — untyped 8-byte machine address</li>
+<li>b64 — 64-bit bitfield</li>
+<li>string — alias for [ ] u8</li>
+<li>integer — the type of an unconverted integer literal; it coerces</li>
+</ul>
+<p>  to any other integer type where one is required</p>
+<h3>6.2 array types</h3>
+<p>an array is a fixed-length sequence of elements of uniform type.</p>
+<pre>
+arraytype = &quot;[&quot; constexpr &quot;]&quot; type .
+</pre>
+<p>the length is a positive s64 constant. elements are laid out
+contiguously and the array's alignment is the alignment of its
+element type.</p>
+<h3>6.3 slice types</h3>
+<p>a slice is a fat pointer consisting of a data address and an
+element count. its size is 16 bytes and its alignment is 8.</p>
+<pre>
+slicetype = &quot;[&quot; &quot;]&quot; type .
+</pre>
+<p>an expression of array type is implicitly convertible to a slice of
+the same element type where one is required — in an assignment, an
+argument position, or an explicit as conversion.</p>
+<h3>6.4 record types</h3>
+<p>a record is a fixed sequence of named fields. the field list, a
+recdef, is a possibly empty comma-separated list of name-and-type
+pairs opened by a colon and closed by a semicolon.</p>
+<pre>
+recordtype = &quot;record&quot; recdef .
+recdef     = &quot;:&quot; [ vardefs ] &quot;;&quot; .
+vardefs    = vardef { &quot;,&quot; vardef } .
+vardef     = ident type .
+</pre>
+<p>fields are laid out in order with natural alignment and the record
+itself is aligned to the strictest alignment of any of its fields.
+a record may contain pointers to itself.</p>
+<h3>6.5 pointer types</h3>
+<p>a pointer value is either none or the address of a value of its
+base type. its size is 8 bytes.</p>
+<pre>
+pointertype = &quot;^&quot; type .
+</pre>
+<p>dereferencing, written p^, yields the pointed-to value as an
+lvalue.</p>
+<h3>6.6 enumeration and union types</h3>
+<p>an enumeration lists a fixed set of named variants separated by
+the bar operator. its underlying representation is u8 and distinct
+from any other enumeration. at least one variant is required.</p>
+<pre>
+enumtype = &quot;enum&quot; ident { &quot;|&quot; ident } .
+</pre>
+<p>a tagged union is a discriminated variant type. variants are
+separated by the bar operator; each variant carries an optional
+record of payload fields, written as a recdef (see 6.4). the
+discriminant tag is stored at offset zero; the payload area follows,
+aligned to the strictest alignment among the variants, and its size
+is the maximum payload size. at least one variant is required.</p>
+<pre>
+uniontype    = &quot;union&quot; unionvariant { &quot;|&quot; unionvariant } .
+unionvariant = ident [ recdef ] .
+</pre>
+<p>for a union value u the expression u.tag yields the tag as a value
+of the union's internal enumeration, and u.v yields the payload of
+variant v as an lvalue. writing to u.tag changes the active variant.</p>
+<h3>6.7 function types</h3>
+<p>a function type describes a call signature.</p>
+<pre>
+functiontype = &quot;fn&quot; signature .
+signature    = [ type ] &quot;(&quot; [ param { &quot;,&quot; param } ] &quot;)&quot;
+               [ &quot;inline&quot; ] [ &quot;raises&quot; ] .
+param        = ident [ &quot;&amp;&quot; ] type .
+</pre>
+<p>the leading type is the return type and may be omitted when the
+function returns nothing. the inline marker is admissible only in
+function definitions, not in first-class function types; see 10.2.
+the raises marker is part of the function type: a function value
+of raising type may be called only from a raising function.</p>
+<h2>7. variable declarations</h2>
+<p>a variable declaration introduces a named location of a given type.</p>
+<pre>
+vardecl = &quot;var&quot; ident type .
+</pre>
+<p>module-scope variables reside in the module's bss segment and are
+initialised to zero. function-scope variables reside on the
+activation frame and must be assigned before use; they are not
+implicitly initialised.</p>
+<h2>8. expressions</h2>
+<p>an expression denotes the computation of a value. many expressions
+are also lvalues when their principal operand is.</p>
+<h3>8.1 operands</h3>
+<pre>
+primary = atom | ifexpr .
+atom    = &quot;none&quot; | &quot;true&quot; | &quot;false&quot;
+        | integer | hex | fp | character | string
+        | qualident
+        | &quot;(&quot; expr &quot;)&quot; .
+ifexpr  = &quot;if&quot; expr &quot;then&quot; exprorcmpd [ &quot;else&quot; exprorcmpd ] .
+exprorcmpd = expr | compound .
+qualident = ident [ &quot;.&quot; ident ] .
+</pre>
+<p>a qualified identifier selects a name from an imported module, a
+record field, a tagged-union variant, or an enumeration variant.</p>
+<p>an index, a slice, a field selection, and a dereference may be
+applied as postfix operators to any primary and combined freely. a
+trailing comma-separated list of arguments after the postfix chain
+is a function call (see 9.2). an argument is an atom optionally
+followed by a postfix chain of indices, fields, and dereferences —
+binary operators and nested calls must still be parenthesised.</p>
+<pre>
+postfix = primary { index | field | deref } [ args ] .
+args    = arg { &quot;,&quot; arg } .
+arg     = atom { index | field | deref } [ &quot;&amp;&quot; ] .
+index   = &quot;[&quot; expr [ &quot;:&quot; expr ] &quot;]&quot; .
+field   = &quot;.&quot; ident .
+deref   = &quot;^&quot; .
+</pre>
+<p>an index of the form a[lo:hi] applied to an array or slice produces
+a slice that borrows the same storage, starting at lo and ending
+before hi. applied to a b64, the same form extracts the bit-field
+of width hi minus lo starting at bit lo.</p>
+<h3>8.2 operators</h3>
+<p>the operators of almac are organised in the following precedence
+classes, from highest to lowest:</p>
+<ul>
+<li>postfix — call, index, field, deref</li>
+<li>cast — as</li>
+<li>unary — -</li>
+<li>multiplicative — *, /, mod</li>
+<li>additive — +, -</li>
+<li>relational — ==, !=, &lt;, &lt;=, &gt;, &gt;=</li>
+<li>assignment — =, +=, -=</li>
+</ul>
+<p>arithmetic and relational operators require both operands to have
+the same type after implicit coercion.</p>
+<h3>8.2.1 logical operators</h3>
+<p>logical conjunction and disjunction are provided by the predefined
+procedures and, or, and not.</p>
+<pre>
+and ( b0, b1, ... )         short-circuit conjunction
+or  ( b0, b1, ... )         short-circuit disjunction
+not ( b )                   negation
+</pre>
+<p>all arguments and results are of type bool. and and or evaluate
+their arguments left to right and stop at the first false or true
+argument respectively.</p>
+<h3>8.2.2 arithmetic operators</h3>
+<p>the binary operators +, -, *, and / apply to integer and f64
+operands; the operator mod applies only to integer operands. the
+unary - is available for s64, integer, and f64.</p>
+<p>for u8 operands, the result of a binary arithmetic operator is
+truncated to 8 bits.</p>
+<h3>8.2.3 bitfield operators</h3>
+<p>for a value b of type b64 and integer expressions i and j the
+following forms are defined.</p>
+<ul>
+<li>b [ i ] — bit i of b, result of type bool</li>
+<li>b [ i : j ] — bits i .. j-1 of b, result of type b64</li>
+</ul>
+<p>further bit manipulation is exported by the standard module bit; see
+appendix b.</p>
+<h3>8.2.4 relations</h3>
+<p>the six relational operators compare two values of the same type
+and yield bool. for f64 the comparison follows ieee-754 ordering;
+for u8 it is unsigned; for all other integer types it is signed.</p>
+<h3>8.2.5 type conversions</h3>
+<p>an explicit conversion has the form</p>
+<pre>
+cast = unary [ &quot;as&quot; type ] .
+</pre>
+<p>the permitted conversions are</p>
+<ul>
+<li>any integer type to any integer type</li>
+<li>any integer type to f64</li>
+<li>f64 to any integer type (truncating toward zero)</li>
+<li>any scalar to bool (non-zero is true)</li>
+<li>array of t to slice of t</li>
+<li>pointer to address; address to pointer of any base type</li>
+</ul>
+<p>a value of type u8 keeps its low 8 bits; longer integer targets are
+sign-extended from s64 and zero-extended from u8.</p>
+<p>implicit conversions occur in assignment, argument passing, and
+comparison: integer literals adopt the type they are compared or
+assigned against, arrays convert to slices where a slice is
+required, and none converts to any pointer type or to address.</p>
+<h2>9. statements</h2>
+<p>statements denote actions. a statement sequence is opened by a
+colon and closed by a semicolon. within the sequence each simple
+statement — assignment, return, defer, raise, break, continue — is
+terminated by its own semicolon. statements are then juxtaposed
+without any separator between them, and the closing semicolon of
+the compound is distinct from the terminator of the last statement.
+a compound-form statement (for, if) ends at the closing semicolon
+of its body and contributes no further semicolon. an empty compound,
+written `: ;`, is permitted, and the colon introduces no new scope.</p>
+<pre>
+compound = &quot;:&quot; [ stmts ] &quot;;&quot; .
+stmts    = stmt { stmt } .
+stmt     = return | defer | raise | for | break | continue | if | ( expr &quot;;&quot; ) .
+return   = &quot;return&quot; expr &quot;;&quot; .
+defer    = &quot;defer&quot; expr &quot;;&quot; .
+raise    = &quot;raise&quot; ident &quot;;&quot; .
+break    = &quot;break&quot; &quot;;&quot; .
+continue = &quot;continue&quot; &quot;;&quot; .
+</pre>
+<p>a function body with a single statement is therefore written
+`: stmt; ;`. the form is consistent across nesting: every body close
+is an explicit `;`, never merged with the terminator of the last
+statement, so the parser is unambiguous and ill-formed inputs such
+as `if cond: a;` (missing the body close) are rejected with a clear
+error rather than absorbed into the next statement.</p>
+<h3>9.1 assignments</h3>
+<p>assignment is an expression in almac. it has the form</p>
+<pre>
+assign = compare [ ( &quot;=&quot; | &quot;+=&quot; | &quot;-=&quot; ) compare ] .
+</pre>
+<p>and its result is the value of the right-hand side. chained assignment
+is not permitted.</p>
+<p>the left-hand side of an assignment must be an lvalue: a local
+variable, a module variable, or a calculated address obtained
+through indexing, field selection, or dereference. aggregates of
+array or record type are not assignable as a whole; they must be
+updated field by field.</p>
+<p>a slice assignment copies only the data pointer and the length;
+the elements themselves are not duplicated.</p>
+<p>the compound assignments += and -= apply to scalar operands only.</p>
+<h3>9.2 function calls</h3>
+<p>a function call is a postfix operator on a function-valued primary.
+arguments follow the callee directly — there is no surrounding
+parenthesis pair. an arg list ends at the first token that is not
+a comma or an atom-starter (literal, qualident, or `(`).</p>
+<pre>
+args = arg { &quot;,&quot; arg } .
+arg  = atom { index | field | deref } [ &quot;&amp;&quot; ] .
+atom = &quot;none&quot; | &quot;true&quot; | &quot;false&quot;
+     | integer | hex | fp | character | string
+     | qualident
+     | &quot;(&quot; expr &quot;)&quot; .
+</pre>
+<p>each argument is an atom optionally followed by a chain of non-call
+postfix operators: indexing `[i]`, field selection `.field`, and
+dereference `^`. binary operators and nested calls are not allowed
+without parentheses. for example, `f a + b` is parsed as
+`(f a) + b`; to call f with the sum, write `f (a + b)`. but
+`f a[i]`, `f a.x.y`, and `f a^.x` are all valid and pass the
+respective derived lvalue as the argument.</p>
+<p>a zero-argument call has no syntactic form in the arg list. instead,
+when a postfix expression resolves to a function value and the
+surrounding context expects a non-function value, the parser
+auto-calls the function with zero arguments. so `last = clock.now`
+calls `clock.now` and assigns the result; `fp = clock.now`, where
+`fp` has a function type, keeps `clock.now` as a function value
+without calling.</p>
+<p>a parameter declared with &amp; must be supplied with a writable
+lvalue, and that lvalue must itself be followed by &amp; at the call
+site. a call to a function whose signature includes raises
+propagates the callee's fault through the call site; such a call
+may appear only within a raising function.</p>
+<h3>9.3 statement sequences</h3>
+<p>a compound is a `:` ... `;` sequence of statements. it introduces
+no new scope.</p>
+<h3>9.4 if statements</h3>
+<pre>
+if         = &quot;if&quot; expr &quot;then&quot; stmtorcmpd [ &quot;else&quot; stmtorcmpd ] .
+stmtorcmpd = stmt | compound .
+</pre>
+<p>the keyword `then` separates the condition from the branch. each
+branch is either a compound `: stmts ;` or a single statement. a
+single simple statement carries its own `;` terminator; a single
+compound-form statement (another `for`/`if`) ends at its own body
+close. the closing `;` of the last branch's compound (or the
+terminator of the last branch's statement) serves as the if's
+overall terminator — no extra `;` is required after.</p>
+<p>a dangling `else` binds to the nearest unmatched `if`. to attach
+an `else` to an outer `if`, wrap the inner branch in a compound:
+`if a then: if b then c;; else d;` attaches the `else` to `a`,
+while `if a then if b then c; else d;` attaches it to `b`.</p>
+<p>the condition is of type bool. an if construct is also an
+expression (see 8 / appendix `ifexpr`). when used as an expression
+every branch must be present and all branches must yield values of
+the same type. each branch is either a bare expression or a
+compound `: stmts ;`; a bare expression yields its own value, a
+compound yields the value of its last statement. an
+expression-statement built from an if expression follows the
+`(expr &quot;;&quot;)` rule and so carries an additional `;` terminator —
+for example `x = if y &gt; 0 then 1 else 2;`.</p>
+<h3>9.5 for statements</h3>
+<p>the for statement is the only looping construct. both the
+condition and the step are optional.</p>
+<pre>
+forstmt = &quot;for&quot; [ expr [ &quot;;&quot; expr ] ] compound .
+</pre>
+<p>if the condition is omitted the loop is infinite. if a step is
+supplied — separated from the condition by a semicolon — it is
+evaluated after each iteration of the body and before the next
+condition check; it is the target of continue.</p>
+<p>inside the body the statements break and continue exit the
+enclosing loop or proceed to the next iteration respectively.
+they are not permitted outside a loop.</p>
+<pre>
+for i != 10; i += 1 :
+  say i;
+;
+</pre>
+<h3>9.6 return statements</h3>
+<pre>
+return = &quot;return&quot; expr &quot;;&quot; .
+</pre>
+<p>the expression must be compatible with the function's declared
+return type. all registered defer actions run before the return
+completes.</p>
+<p>a function with no declared return type returns nothing. the
+expression following return must still be supplied; use the
+literal none, whose type is none and is compatible with any
+no-result function. the conventional void-return form is therefore</p>
+<pre>
+return none;
+</pre>
+<h3>9.7 defer statements</h3>
+<pre>
+defer = &quot;defer&quot; expr &quot;;&quot; .
+</pre>
+<p>a defer statement registers an expression to be evaluated later,
+at function return or at fault propagation. registered expressions
+are replayed in last-in first-out order. at most eight defers are
+permitted per function.</p>
+<pre>
+fn open_and_read(path string) raises
+  var f file.id:
+  file.open path, f&amp;;
+  defer file.close f&amp;;
+  ...
+;
+</pre>
+<p>(each `;` terminates one statement; the final `;` on its own line
+closes the compound.)</p>
+<h3>9.8 raise statements and fault handlers</h3>
+<pre>
+raise     = &quot;raise&quot; ident &quot;;&quot; .
+faultdecl = &quot;fault&quot; ident { &quot;,&quot; ident } .
+handler   = &quot;on&quot; ident &quot;:&quot; stmts .
+</pre>
+<p>a fault declaration introduces one or more named faults. their
+numeric identifiers are allocated on first declaration and shared
+across the whole program. several faults are predeclared; see
+appendix b.</p>
+<p>a raise statement abandons the current function and marks the
+fault as active; all registered defer expressions are replayed
+before control transfers. the raises marker is required if and
+only if the function raises a fault or calls another raising
+function: omitting it where it is required is an error, and so
+is including it where it is not.</p>
+<p>within a function body, after the statements and before the body's
+closing `;`, a series of on clauses may handle specific faults. a
+handler is `on ident:` followed by a statement sequence that runs
+until the next `on` clause or the body's closing `;`; the handlers
+share the body's close rather than carrying their own.</p>
+<pre>
+fn parse_byte u8(s string) raises
+  v u8:
+  byte.parse s, v&amp;;
+  return v;
+  on invalid_format:
+    return 0;
+;
+</pre>
+<p>a handler runs in the caller's frame; completion of a handler
+converts the fault into a regular return. faults for which no
+handler applies continue to propagate to the caller.</p>
+<h2>10. function declarations</h2>
+<p>a function declaration associates a name with a signature and a
+body.</p>
+<pre>
+fndef     = &quot;fn&quot; ident signature [ vardefs ]
+            ( body | asmbody ) .
+body      = &quot;:&quot; [ stmts ] { handler } &quot;;&quot; .
+handler   = &quot;on&quot; ident &quot;:&quot; stmts .
+vardefs   = vardef { &quot;,&quot; vardef } .
+vardef    = ident type .
+asmbody   = &quot;asm&quot; compound .
+</pre>
+<p>local variables follow the signature directly as a bare comma-
+separated list of name-and-type pairs. there is no `var` keyword
+here — `var` is reserved for module-level vardecls — so a leading
+`var` after a signature signals that this `fn` is a forward
+declaration and the `var` belongs to the enclosing scope. locals
+are allocated on the activation frame with natural alignment and
+are not initialised.</p>
+<p>a function may not return an aggregate (array, record, slice, or
+tagged union) by value. to return such a value, pass an
+out-parameter.</p>
+<h3>10.1 formal parameters</h3>
+<p>a parameter list is a possibly empty sequence of bindings of the
+form ident [ &amp; ] type. scalar parameters — bool, integer, f64,
+pointer, and address — are passed by value. aggregate parameters —
+array, record, slice, and tagged union — are passed by reference,
+independently of the &amp; annotation.</p>
+<p>the &amp; annotation additionally marks the parameter as an
+out-parameter. an out-parameter must be supplied at the call site
+with a writable lvalue followed by &amp;; the callee is free to modify
+the backing storage. a parameter without &amp; is immutable inside the
+body of the callee.</p>
+<h3>10.2 inline functions</h3>
+<p>a function whose signature ends with inline is expanded at the
+call site rather than called conventionally. an inline function
+may not declare locals and may not contain return, defer, raise,
+for, break, or continue.</p>
+<h3>10.3 forward declarations</h3>
+<p>a declaration consisting of a signature alone (see section 4)
+binds the name to a function value with no address. a subsequent
+definition of the same name with an identical signature patches
+the forward binding with its code address, frame size, and inline
+flag. a definition of the same name with a different signature
+replaces the binding entirely and is not a patch.</p>
+<p>forward declarations are permitted in the implementation section as
+well as the public section; a `fn` followed by neither a locals
+list nor a `:`/`asm` body is treated as a forward declaration, with
+what follows belonging to the enclosing scope.</p>
+<h3>10.4 assembly bodies</h3>
+<p>a function body may be replaced by an asm block. the contents of
+the block are passed verbatim to the rv64 assembler and compiled
+to risc-v instructions. the surrounding prologue and epilogue are
+emitted around the block. the concrete assembly syntax is outside
+the scope of this report.</p>
+<pre>
+fn nop() asm: nop;
+</pre>
+<h3>10.5 predefined functions</h3>
+<p>a number of functions and intrinsics are predeclared in every
+module; they are enumerated in appendix b.</p>
+<h2>11. modules</h2>
+<p>a module is the unit of compilation and of namespacing.</p>
+<pre>
+module = [ importlist ]
+         { declaration }
+         [ &quot;implementation&quot; { definition } ] .
+</pre>
+<h3>11.1 interface and implementation</h3>
+<p>every declaration that precedes the implementation keyword is
+public and is exported under its name. declarations and definitions
+placed after implementation are private and are accessible only
+within the module.</p>
+<h3>11.2 imports</h3>
+<p>an import list, if present, names other modules to load before
+compilation of the current module begins.</p>
+<pre>
+importlist = &quot;import&quot; string { &quot;,&quot; string } .
+</pre>
+<p>each string is a path to a source file, without the .alm
+extension. a path that begins with / is absolute; otherwise it is
+resolved relative to the work directory of the module that
+contains the import. the local name under which the imported
+module is bound is the basename of the path — the segment after
+the last /, or the whole path if there is none.</p>
+<p>a member of an imported module m is accessed by qualification:
+its exported type t is written m.t, its exported function f is
+written m.f. standard modules registered by the host are bound
+by basename, so import &quot;file&quot; resolves to the predeclared file
+module without reading anything from disk. recursive imports are
+rejected.</p>
+<h3>11.3 standard modules</h3>
+<p>the standard modules are documented in appendix b. they are
+implemented by the host and made available at every module's top
+level as if they had been imported.</p>
+<h2>appendix a — syntax</h2>
+<pre>
+module       = [ importlist ] { declaration }
+                 [ &quot;implementation&quot; { definition } ] .
+importlist   = &quot;import&quot; string { &quot;,&quot; string } .
+
+declaration  = functionproto | vardecl | constdecl | typedecl
+             | faultdecl .
+definition   = fndef | declaration .
+
+functionproto = &quot;fn&quot; ident signature .
+vardecl       = &quot;var&quot; vardef .
+constdecl     = &quot;const&quot; ident &quot;=&quot; atom .
+typedecl      = &quot;type&quot; ident type .
+faultdecl     = &quot;fault&quot; ident { &quot;,&quot; ident } .
+vardef        = ident type .
+
+fndef        = &quot;fn&quot; ident signature [ vardefs ]
+               ( body | asmbody ) .
+asmbody      = &quot;asm&quot; compound .
+signature    = [ type ] &quot;(&quot; [ param { &quot;,&quot; param } ] &quot;)&quot;
+               [ &quot;inline&quot; ] [ &quot;raises&quot; ] .
+vardefs      = vardef { &quot;,&quot; vardef } .
+param        = ident [ &quot;&amp;&quot; ] type .
+
+type         = qualident
+             | &quot;^&quot; type
+             | &quot;[&quot; [ constexpr ] &quot;]&quot; type
+             | &quot;record&quot; recdef
+             | &quot;enum&quot; ident { &quot;|&quot; ident }
+             | &quot;union&quot; unionvariant { &quot;|&quot; unionvariant }
+             | &quot;fn&quot; signature .
+recdef       = &quot;:&quot; [ vardefs ] &quot;;&quot; .
+unionvariant = ident [ recdef ] .
+qualident    = ident [ &quot;.&quot; ident ] .
+
+body         = &quot;:&quot; [ stmts ] { handler } &quot;;&quot; .
+handler      = &quot;on&quot; ident &quot;:&quot; stmts .
+compound     = &quot;:&quot; [ stmts ] &quot;;&quot; .
+stmt         = return | defer | raise | for | break | continue | if | ( expr &quot;;&quot; ) .
+stmts        = stmt { stmt } .
+return       = &quot;return&quot; expr &quot;;&quot; .
+defer        = &quot;defer&quot; expr &quot;;&quot; .
+raise        = &quot;raise&quot; ident &quot;;&quot; .
+for          = &quot;for&quot; [ expr [ &quot;;&quot; expr ] ] compound .
+if           = &quot;if&quot; expr &quot;then&quot; stmtorcmpd [ &quot;else&quot; stmtorcmpd ] .
+break        = &quot;break&quot; &quot;;&quot; .
+continue     = &quot;continue&quot; &quot;;&quot; .
+stmtorcmpd   = stmt | compound .
+
+expr         = assign .
+assign       = compare [ ( &quot;=&quot; | &quot;+=&quot; | &quot;-=&quot; ) compare ] .
+compare      = addition [ relation addition ] .
+relation     = &quot;==&quot; | &quot;!=&quot; | &quot;&lt;&quot; | &quot;&lt;=&quot; | &quot;&gt;&quot; | &quot;&gt;=&quot; .
+addition     = multiply { ( &quot;+&quot; | &quot;-&quot; ) multiply } .
+multiply     = cast { ( &quot;*&quot; | &quot;/&quot; | &quot;mod&quot; ) cast } .
+cast         = unary [ &quot;as&quot; type ] .
+unary        = [ &quot;-&quot; ] postfix .
+postfix      = primary { index | field | deref } [ args ] .
+args         = arg { &quot;,&quot; arg } .
+arg          = atom { index | field | deref } [ &quot;&amp;&quot; ] .
+index        = &quot;[&quot; expr [ &quot;:&quot; expr ] &quot;]&quot; .
+field        = &quot;.&quot; ident .
+deref        = &quot;^&quot; .
+primary      = atom | ifexpr .
+atom         = &quot;none&quot; | &quot;true&quot; | &quot;false&quot;
+             | integer | hex | fp | character | string
+             | qualident
+             | &quot;(&quot; expr &quot;)&quot; .
+ifexpr       = &quot;if&quot; expr &quot;then&quot; exprorcmpd [ &quot;else&quot; exprorcmpd ] .
+exprorcmpd   = expr | compound .
+
+ident        = letter { letter | digit } .
+letter       = &quot;a&quot; ... &quot;z&quot; | &quot;_&quot; .
+digit        = &quot;0&quot; ... &quot;9&quot; .
+hexdigit     = digit | &quot;a&quot; ... &quot;f&quot; .
+integer      = digit { digit } .
+hex          = &quot;0&quot; &quot;x&quot; hexdigit { hexdigit } .
+fp           = digit { digit } &quot;.&quot; digit { digit } .
+character    = &quot;'&quot; any-char-except-quote &quot;'&quot; .
+string       = '&quot;' { any-char-except-quote } '&quot;' .
+comment      = ( &quot;#&quot; | &quot;--&quot; ) { any-char-except-newline } newline .
+</pre>
+<h2>appendix b — predefined entities</h2>
+<h3>b.1 built-in types</h3>
+<ul>
+<li>bool, s64, u8, f64, address, b64</li>
+<li>string, an alias for [ ] u8</li>
+<li>integer, the type of unconverted integer literals</li>
+</ul>
+<h3>b.2 built-in faults</h3>
+<ul>
+<li>invalid_format</li>
+<li>out_of_range</li>
+<li>buffer_overflow</li>
+<li>operation_failed</li>
+<li>invalid_argument</li>
+<li>open_failed</li>
+<li>read_failed</li>
+<li>write_failed</li>
+<li>seek_failed</li>
+</ul>
+<h3>b.3 predefined procedures</h3>
+<p>the following procedures are in scope at the top level of every
+module.</p>
+<pre>
+fn new address (n s64)                  allocate n bytes, return address
+fn dispose (p&amp; address)                 free a block allocated by new
+fn length s64 (x)                       element count of array or slice
+fn and bool (b0, b1, ...)               short-circuit conjunction
+fn or bool (b0, b1, ...)                short-circuit disjunction
+fn not bool (b bool)                    negation
+fn say (v0, v1, ...)                    format and print, newline at end
+fn sayin (v0, v1, ...)                  format and print, no newline
+fn ask (prompt, buf&amp;, a0&amp;, ...)         prompt, read one line, parse
+fn cd string (path string) raises       change work directory
+fn ls []string () raises                list entries of work directory
+fn mkdir (path string) raises           create a directory
+fn rmdir (path string) raises           remove an empty directory
+fn rm (path string) raises              remove a file
+fn cat (path string) raises             print file contents to output
+fn cp (src string, dst string) raises   copy a file
+</pre>
+<p>the procedures cd, ls, mkdir, rmdir, rm, cat, and cp raise
+operation_failed when the underlying platform call fails.</p>
+<h3>b.4 standard modules</h3>
+<p>the following modules are part of the standard environment. each
+name is the name that may appear in an import list and that
+qualifies its exported members. the signatures below describe the
+public interface of each module — the types, constants, and
+functions visible to importers.</p>
+<p>byte — single-byte memory access and conversion.</p>
+<pre>
+fn peek u8 (p address)
+fn poke (p address, v u8)
+fn format string (buf&amp; string, v u8) raises
+fn parse u8 (s string) raises
+</pre>
+<p>bytes — operations on byte buffers viewed as slices of u8. copy is a
+forward memcpy and is unsafe on overlapping ranges where the
+destination follows the source; move is a memmove that picks copy
+direction from the pointer ordering and is safe for any overlap.</p>
+<pre>
+fn clear (buf&amp; string)
+fn copy string (src string, dst&amp; string)
+fn move string (src string, dst&amp; string)
+fn equal bool (a string, b string)
+fn compare s64 (a string, b string)
+fn format string (buf&amp; string, v string) raises
+fn parse string (buf&amp; string, src string) raises
+</pre>
+<p>bit — bitfield operations on b64.</p>
+<pre>
+fn shil b64 (b b64, n s64)
+fn shir b64 (b b64, n s64)
+fn incl b64 (b b64, lo s64, hi s64)
+fn excl b64 (b b64, lo s64, hi s64)
+</pre>
+<p>signed — s64 arithmetic, conversion, and limits.</p>
+<pre>
+fn abs s64 (x s64)
+fn min s64 (a s64, b s64)
+fn max s64 (a s64, b s64)
+fn round s64 (x f64)
+fn format string (buf&amp; string, v s64) raises
+fn parse s64 (s string) raises
+
+const lowest = -9223372036854775808
+const highest = 9223372036854775807
+</pre>
+<p>float — ieee-754 arithmetic, conversion, and constants.</p>
+<pre>
+fn abs f64 (x f64)
+fn sqrt f64 (x f64)
+fn min f64 (a f64, b f64)
+fn max f64 (a f64, b f64)
+fn round f64 (x f64)
+fn cbrt f64 (x f64)
+fn trunc f64 (x f64)
+fn frac f64 (x f64)
+fn ln f64 (x f64)
+fn exp f64 (x f64)
+fn sin f64 (x f64)
+fn cos f64 (x f64)
+fn tan f64 (x f64)
+fn arcsin f64 (x f64)
+fn arccos f64 (x f64)
+fn arctan f64 (x f64)
+fn arctan2 f64 (y f64, x f64)
+fn is_infinity bool (x f64)
+fn is_nan bool (x f64)
+fn is_finite bool (x f64)
+fn decompose (x f64, mantissa&amp; f64, exp&amp; f64)
+fn compose f64 (mantissa f64, exp f64)
+fn format string (buf&amp; string, v f64) raises
+fn parse f64 (s string) raises
+
+const pi = 3.141592653589793
+const e = 2.718281828459045
+const epsilon = 2.220446049250313e-16
+const nan        # ieee-754 quiet nan
+const infinity   # ieee-754 +infinity
+const lowest     # most-negative finite f64
+const highest    # most-positive finite f64
+</pre>
+<p>boolean — boolean conversion.</p>
+<pre>
+fn format string (buf&amp; string, v bool) raises
+fn parse bool (s string) raises
+</pre>
+<p>random — pseudo-random number generation. the state record
+encapsulates a single 64-bit splitmix64 seed.</p>
+<pre>
+type state record { seed s64 }
+
+fn seed (s&amp; state, n s64)
+fn float f64 (s&amp; state)
+fn boolean bool (s&amp; state)
+fn range s64 (s&amp; state, lo s64, hi s64) raises
+</pre>
+<p>clock — monotonic timing.</p>
+<pre>
+type tick s64
+
+fn now tick ()
+fn elapsed_ns s64 (t tick)
+fn elapsed_us s64 (t tick)
+fn elapsed_ms s64 (t tick)
+</pre>
+<p>time — wall-clock time and calendar decomposition. usecs counts
+microseconds since the unix epoch.</p>
+<pre>
+type usecs s64
+type calendar record {
+  year s64,
+  month s64,
+  day s64,
+  hour s64,
+  minute s64,
+  second s64,
+  weekday s64,
+  yearday s64,
+}
+
+fn now usecs()
+fn decompose (t usecs, c&amp; calendar) raises
+fn compose usecs (c calendar)
+</pre>
+<p>file — file input and output. a file id is an opaque handle
+returned by open, create, append, or replace and consumed by the
+other operations.</p>
+<pre>
+type id s64
+
+fn open id (path string) raises          -- open_failed
+fn create id (path string) raises        -- open_failed
+fn append id (path string) raises        -- open_failed
+fn replace id (path string) raises       -- open_failed
+fn seek (h id, offset s64) raises        -- seek_failed
+fn read string (h id, buf&amp; string) raises -- read_failed
+fn write string (h id, src string) raises -- write_failed
+fn close (h id)
+fn is_exist bool (path string) raises
+fn size s64 (path string) raises         -- open_failed
+fn remove (path string) raises           -- operation_failed
+fn copy (src string, dst string) raises  -- operation_failed
+</pre>
+<p>directory — directory operations and path inspection.</p>
+<pre>
+fn make (path string) raises
+fn remove (path string) raises
+fn is_exist bool (path string) raises
+fn is_file bool (path string) raises
+fn is_dir bool (path string) raises
+</pre>
+<p>marshal — generic textual serialisation. both procedures are
+variadic over any almac value.</p>
+<pre>
+fn to string (buf&amp; string, v0, v1, ...) raises
+fn from (src string, x0&amp;, x1&amp;, ...) raises
+</pre>
+<p>screen — keyboard input and screen output on an alternate-screen
+buffer. poll_key returns a key value whose bit layout is the key
+code in bits 0..6, a control-key flag at bit 7, a key-down bit at
+bit 8, and the shift, ctrl, and alt modifier bits at bits 9, 10,
+and 11 respectively; the predicate functions decode those bits.
+The text cursor follows screen.at and printable writes; show_cursor
+and hide_cursor toggle its visibility.</p>
+<pre>
+type key s64
+
+fn save bool ()
+fn restore ()
+fn clear ()
+fn show_cursor ()
+fn hide_cursor ()
+fn at (col s64, row s64)
+fn poke (col s64, row s64, ch u8)
+fn poll_key key ()
+fn key_code u8 (k key)
+fn is_control_key bool (k key)
+fn is_key_down bool (k key)
+fn is_key_up bool (k key)
+fn is_shift_pressed bool (k key)
+fn is_ctrl_pressed bool (k key)
+fn is_alt_pressed bool (k key)
+
+const width  = 135                 -- text columns, s64
+const height = 45                  -- text rows, s64
+const key_arrow_up    = 1          -- control-key code, u8
+const key_arrow_down  = 2
+const key_arrow_left  = 3
+const key_arrow_right = 4
+const key_home        = 5
+const key_end         = 6
+const key_page_up     = 7
+const key_backspace   = 8
+const key_tab         = 9
+const key_enter       = 10
+const key_page_down   = 11
+const key_esc         = 27
+</pre>
+<p>sound — audio playback.</p>
+<pre>
+fn play (samples []u8) raises
+fn play_file (path string) raises
+</pre>
+</body>
+</html>

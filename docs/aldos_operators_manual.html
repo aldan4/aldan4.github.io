@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>aldos operator's manual</title>
+<meta name="author" content="ortfero">
+<meta name="year" content="2026">
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<h1>aldos operator's manual</h1>
+<address>ortfero</address>
+<h2>introduction</h2>
+<p>aldos is the operating system of the aldan machine. it is intended for single-seat operation: one installation, served by one operator, with a single console as the only point of interaction.</p>
+<p>this manual is addressed to the operator. the role is to be distinguished from that of the user. a user invokes a program and, when the program has completed, has no further duty toward the system. the operator is permanently responsible for the condition of the machine. the operator determines which programs are present on the disk, which libraries are made available at boot, and the state in which the system is left between sessions. when the disk fills, the operator reclaims it. when a program fails to load, the operator identifies the cause.</p>
+<p>aldos provides no facility for remote administration. no other party may be called upon to maintain, repair, or audit the installation. every byte stored on the disk is the consequence of an action taken by the operator or of the execution of a program selected by the operator. the operator is expected to acknowledge this condition before assuming the role.</p>
+<blockquote><p>the operator is accountable for every byte on the disk.</p></blockquote>
+<h2>how the system works</h2>
+<p>aldos is built from a small number of moving parts. the operator should learn each before the prompt is useful.</p>
+<p>the kernel is the part of the system that is always running. it schedules tasks, carries messages between them, and owns the machine's hardware. nothing else touches the disk or the screen except through the kernel.</p>
+<p>a task is a single thread of execution. a process is a task together with a loaded program and a working directory. the system holds up to sixty-four of each. when both are exhausted, no further programs can be started until something exits.</p>
+<p>libraries are modules of code loaded from disk on demand. the kernel does not link programs in advance; the library manager fetches each library the first time it is named, and keeps it in memory until the system shuts down. up to sixty-four libraries may be loaded at once.</p>
+<p>the console is the operator's only window into the running system. it is a fixed text grid and a keyboard, provided by the opcon library. there is no second screen, no log file the operator must tail, and no graphical mode.</p>
+<p>files and volumes are how the disk is organised. a volume is a mounted unit of storage; each volume sits on a letter drive. files live in directories within a volume. there is no shared root above the drives.</p>
+<p>messages are how tasks talk. one task sends, another receives, the receiver replies. the operator never sees a message change hands, but every service the system offers, including the disk, the console, and the library manager, is reached this way.</p>
+<p>the operator should keep one distinction in mind. some things are resident in the kernel and are always there: the scheduler, the message dispatch, the memory pool. other things are loaded only when needed: libraries, programs, the shell itself. a fault in something resident stops the machine; a fault in something loaded stops only that one program.</p>
+<h2>the console</h2>
+<h3>command line</h3>
+<p>the console runs the almac shell. the prompt is a greater-than sign followed by a space:</p>
+<pre>
+&gt;
+</pre>
+<p>when a line of input is not yet complete, for example an unclosed compound or an unfinished expression, the shell continues the line with a period and a space:</p>
+<pre>
+&gt; fn greet ():
+.   say &quot;hello&quot;;;
+</pre>
+<p>whatever the operator types at the prompt is almac source. there are no separate shell commands in the unix sense. the resident commands listed later in this manual are functions that the shell makes available at the prompt with no import required.</p>
+<p>to run an app, the operator imports its module and calls its entry function:</p>
+<pre>
+&gt; import '/a/tools/jot
+&gt; jot.in '/a/notes/today
+</pre>
+<h3>editing</h3>
+<p>backspace deletes the character to the left of the cursor. enter submits the line. tab inserts two spaces; the shell does not align to a tab stop. a single input line holds up to two hundred and fifty-six characters. a multi-line entry, that is text typed across continuation prompts, holds up to four thousand and ninety-six characters in total. when either limit is reached the shell refuses further input on that entry; the operator must submit or abandon what is already typed.</p>
+<h3>sessions</h3>
+<p>a complete short session, from prompt to prompt:</p>
+<pre>
+&gt; import '/a/tools/jot
+&gt; jot.in '/a/notes/today
+... editor takes the screen, operator edits, ctrl-s saves, ctrl-q exits
+&gt; ls
+notes
+tools
+games
+init
+almac
+&gt;
+</pre>
+<h3>the startup script</h3>
+<p>when the shell begins, after the boot sequence has completed and before the first prompt is issued, it looks for the file /a/almac/rc.alm. if the file is present, the shell evaluates it as almac source in the global namespace. if it is absent, the shell proceeds directly to the prompt.</p>
+<p>rc.alm is the operator's point of customisation. the operator places in it any imports that should be in effect at the prompt without typing them by hand, and any functions that the operator wishes to call without first loading a module. anything defined in rc.alm is visible at the prompt thereafter, exactly as if the operator had typed it at the first prompt.</p>
+<p>a short example. an operator who reads the system log daily might keep:</p>
+<pre>
+import '/a/tools/gaze
+
+fn log () raises:
+  gaze.at '/a/notes/log;;
+</pre>
+<p>after boot, the operator types log at the prompt and the pager opens on the log file. a zero-argument call needs no parentheses; the shell calls log automatically because the prompt expects a value, not a function.</p>
+<p>rc.alm is itself a text file and is edited with jot. an installation that does not require any customisation may omit the file entirely; the shell will not complain about its absence.</p>
+<h2>files, volumes and devices</h2>
+<p>paths take the form of a slash, a drive letter, a slash, and the path within the drive. forward slash separates directory components. a single dot refers to the current directory; two dots refer to the parent. a path that does not begin with a slash is taken as relative to the working directory.</p>
+<p>drive a is the boot volume. it holds the kernel image, the system libraries in /a/init/a, the shell in /a/almac, the tools in /a/tools, the games in /a/games, and whatever files the operator has placed on the disk. drive a is read-write.</p>
+<p>drive b, when present, is a read-only passthrough to the filesystem of the machine that hosts aldan. it appears only when the machine was started with host access enabled, and is absent on a sealed installation. the operator should not assume drive b is available.</p>
+<p>devices are referred to by role, not by port. the operator names the keyboard, the display, the disk, or the sound channel; the kernel resolves the name. there are no port numbers, no interrupt vectors, and no device addresses for the operator to learn.</p>
+<p>the disk server is a single task that holds the disk. every read and every write, from the shell, from a library, or from a program, is queued through it. the operator should not assume that two writes issued in quick succession are interleaved; they are serialised, in the order the disk server received them.</p>
+<h2>booting</h2>
+<p>booting is the sequence from power-on to the first prompt. the operator's role begins at the moment the machine is powered; the firmware needs no input and the operator may not interrupt it.</p>
+<p>each step of the boot prints a line to the console as it completes. an operator who watches the console during boot can identify the last step that succeeded.</p>
+<ul>
+<li>the firmware clears memory and enters the kernel.</li>
+<li>the kernel brings up the task manager and the disk server.</li>
+<li>the boot volume is mounted at drive a from the first bootable adfs partition.</li>
+<li>if host access is configured, the host filesystem is mounted at drive b. a failure here is not fatal; the system continues without it.</li>
+<li>the file /a/initmgr.run is loaded and run as the first process.</li>
+<li>initmgr loads every library in /a/init/a and then runs /a/almac/almac.run, the shell.</li>
+<li>if the file /a/almac/rc.alm exists, the shell evaluates it before issuing the first prompt.</li>
+</ul>
+<p>if the boot does not reach the prompt, the operator should read the console. the last line printed names the step that did not complete. the operator should suspect, in order: a corrupt or missing file at the named step, a damaged adfs partition, and a hardware fault. specific diagnostic codes are not yet stable and are not listed here.</p>
+<h2>programs</h2>
+<p>a program in aldos is a file in the rune format. it has the extension .run and contains four sections, the code, the read-only data, the mutable data, and a reservation for the stack, together with a table of relocations the loader applies when the file is brought into memory. the rune header carries a magic number and a machine identifier; the loader will refuse a file with the wrong machine.</p>
+<p>a library is a rune file with the extension .lib. it differs from a .run only in what its entry function returns: a library returns the address of a vtable through which other code calls into it. the library manager identifies libraries by base name alone, and two libraries that share a base name cannot both be loaded.</p>
+<p>the lifecycle of a program is fixed. the loader opens the file, validates the magic and the machine, allocates memory for the four sections, copies them in, applies the relocations, zeroes the uninitialised data, and jumps to the entry. when the entry returns, the runtime calls each registered destructor in reverse order of registration, and the kernel reclaims the process slot.</p>
+<p>almac source files have the extension .alm. they are not executables; they are text. the shell compiles them on demand when the operator imports them.</p>
+<h2>command reference</h2>
+<p>each entry in this section follows the same form: name, synopsis, description, options, examples, and notes. a field that does not apply is written with the value &quot;none&quot;. the commands are grouped in two parts. resident commands are bound at the shell prompt and may be called without an import. transient commands are apps loaded from the disk on demand; the operator imports the module by name before calling its entry.</p>
+<p>resident commands.</p>
+<h3>import</h3>
+<p>name: import.</p>
+<p>synopsis: import 'name. import 'name, 'name, ...</p>
+<p>description: load a library from the disk. the operator gives the path to the library file, without the .lib extension. several libraries may be loaded with a single import. a library that initmgr has already loaded at boot, that is, one of those in /a/init/a, may be referred to by its base name alone.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; import '/a/tools/jot
+&gt; import '/a/tools/gaze, '/a/games/snake
+</pre>
+<p>notes: a library that is already loaded is not loaded again. an import that names a library the manager cannot find raises a fault and the line is rejected.</p>
+<h3>say</h3>
+<p>name: say.</p>
+<p>synopsis: say expression { &quot;,&quot; expression }.</p>
+<p>description: write each expression to the console; a newline is appended after the last. several values may be passed in one call.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; say &quot;hello&quot;
+hello
+&gt; say (1 + 2)
+3
+&gt; say &quot;x = &quot;, 42
+x = 42
+</pre>
+<p>notes: none.</p>
+<h3>sayin</h3>
+<p>name: sayin.</p>
+<p>synopsis: sayin expression { &quot;,&quot; expression }.</p>
+<p>description: write each expression to the console with no trailing newline. used when the operator wishes to build a single line of output from several calls.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; sayin &quot;x = &quot;
+&gt; say 42
+x = 42
+</pre>
+<p>notes: none.</p>
+<h3>ls</h3>
+<p>name: ls.</p>
+<p>synopsis: ls.</p>
+<p>description: list the entries in the current working directory. each entry is written on its own line.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; ls
+[ &quot;.&quot;, &quot;..&quot;, &quot;tools&quot;, &quot;games&quot;, &quot;init&quot;, &quot;almac&quot; ]
+</pre>
+<p>notes: ls lists the current working directory only and takes no argument. to list another directory, the operator changes into it first with cd.</p>
+<h3>cd</h3>
+<p>name: cd.</p>
+<p>synopsis: cd 'path.</p>
+<p>description: change the working directory to the named path. returns the new working directory as a string.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; cd '/a/notes
+/a/notes
+&gt; cd '..
+/a
+</pre>
+<p>notes: there is no resident pwd command. to read the current working directory without changing it, the operator may call cd with '. as the argument; the return value is the working directory.</p>
+<h3>mkdir</h3>
+<p>name: mkdir.</p>
+<p>synopsis: mkdir 'path.</p>
+<p>description: create a new directory at the named path. the parent of the new directory must exist.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; mkdir '/a/notes
+</pre>
+<p>notes: mkdir creates a single directory. to create a chain of directories, the operator calls mkdir on each in turn.</p>
+<h3>rmdir</h3>
+<p>name: rmdir.</p>
+<p>synopsis: rmdir 'path.</p>
+<p>description: remove the named directory. the directory must be empty.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; rmdir '/a/notes
+</pre>
+<p>notes: rmdir will not remove a directory that contains files or sub-directories. the operator should rm the contents first.</p>
+<h3>touch</h3>
+<p>name: touch.</p>
+<p>synopsis: touch 'path.</p>
+<p>description: if the named file does not exist, create it as an empty file. if it does exist, update its timestamp.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; touch '/a/notes/today
+</pre>
+<p>notes: touch does not create the parent directory.</p>
+<h3>rm</h3>
+<p>name: rm.</p>
+<p>synopsis: rm 'path.</p>
+<p>description: remove the named file.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; rm '/a/notes/old
+</pre>
+<p>notes: rm removes a single file and does not remove directories. there is no confirmation prompt and there is no recovery.</p>
+<h3>cat</h3>
+<p>name: cat.</p>
+<p>synopsis: cat 'path.</p>
+<p>description: write the contents of the named file to the console.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; cat '/a/notes/today
+buy bread.
+fix the disk light.
+</pre>
+<p>notes: cat is intended for short text files. for a longer file the operator should use gaze.</p>
+<h3>cp</h3>
+<p>name: cp.</p>
+<p>synopsis: cp 'source, 'destination.</p>
+<p>description: copy the source file to the destination. the destination is overwritten if it exists.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; cp '/a/notes/today, '/a/notes/yesterday
+</pre>
+<p>notes: cp copies a single file. the destination's parent directory must exist.</p>
+<h3>mv</h3>
+<p>name: mv.</p>
+<p>synopsis: mv 'source, 'destination.</p>
+<p>description: move or rename the source file to the destination. used to rename a file within a directory and to move a file from one directory to another.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; mv '/a/notes/old, '/a/archive/old
+</pre>
+<p>notes: mv operates on a single file. the destination's parent directory must exist.</p>
+<p>transient commands.</p>
+<h3>jot</h3>
+<p>name: jot.</p>
+<p>synopsis: jot.in 'path.</p>
+<p>description: a full-screen text editor. jot takes the console, loads the named file into a buffer, and lets the operator move the cursor with the arrow keys and edit the buffer in place. ctrl-s writes the buffer to the file. ctrl-q exits and returns the console to the shell.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; import '/a/tools/jot
+&gt; jot.in '/a/notes/today
+... editor takes the screen, operator edits, ctrl-s saves, ctrl-q exits
+&gt;
+</pre>
+<p>notes: jot edits in memory. no change is written to the disk until the operator presses ctrl-s. an operator who quits with ctrl-q before saving will lose every change made since the last save.</p>
+<h3>gaze</h3>
+<p>name: gaze.</p>
+<p>synopsis: gaze.at 'path.</p>
+<p>description: a pager for reading a file too long to cat. gaze takes the console, displays the first page of the file, and lets the operator scroll. the arrow keys scroll one line at a time; page-up and page-down scroll half a page. ctrl-q exits.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; import '/a/tools/gaze
+&gt; gaze.at '/a/notes/log
+... file fills the screen, operator scrolls, ctrl-q exits
+&gt;
+</pre>
+<p>notes: gaze is read-only. the operator may scroll but cannot edit. to edit a file, use jot.</p>
+<h3>snake</h3>
+<p>name: snake.</p>
+<p>synopsis: snake.play.</p>
+<p>description: a game. a snake moves across the screen, lengthening when it eats and ending when it strikes a wall or itself. the arrow keys steer. ctrl-q exits.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; import '/a/games/snake
+&gt; snake.play
+... game runs, operator steers, ctrl-q exits
+&gt;
+</pre>
+<p>notes: the score is shown at the top of the screen and is not preserved between runs.</p>
+</body>
+</html>
