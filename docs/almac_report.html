@@ -942,5 +942,11 @@ const key_esc         = 27
 fn play (samples []u8) raises
 fn play_file (path string) raises
 </pre>
+<p>task — cooperative multitasking. yield hands control to the
+scheduler so other ready tasks can run; on hosts without a
+scheduler it is a no-op.</p>
+<pre>
+fn yield ()
+</pre>
 </body>
 </html>
