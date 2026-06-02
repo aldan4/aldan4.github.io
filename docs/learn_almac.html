@@ -420,8 +420,6 @@ fn save_user (name string) raises:
 <h2>13. things you don't have to import</h2>
 <p>these are always in scope:</p>
 <pre>
-new n               allocate n bytes, return the address
-dispose p&amp;          free a block from new
 length x            element count of an array or slice
 and / or / not      short-circuit logical ops
 say / sayin         format and print, with or without a newline
@@ -429,11 +427,13 @@ ask prompt, buf&amp;, a0&amp;, ...        prompt, read a line, parse
 cd, ls, mkdir, rmdir, rm, cat, cp shell-style file ops; raise
                                   operation_failed on failure
 </pre>
+<p>allocation lives in the `heap` module — `heap.new` returns the
+address of a fresh block, `heap.dispose` frees it.</p>
 <pre>
 fn predef_demo () raises
     buffer address, age s64, reply [64]u8:
-    buffer = new 1024;
-    defer dispose buffer&amp;;
+    buffer = heap.new 1024;
+    defer heap.dispose buffer&amp;;
     say &quot;hello,&quot;, (length &quot;hello,&quot;), &quot; bytes long&quot;;
     ask &quot;how old? &quot;, reply&amp;, age&amp;;;
 </pre>
@@ -449,6 +449,7 @@ bit        b64 shifts and range include/exclude
 signed     s64 arithmetic, conversion, limits
 float      f64 arithmetic, trig/log/exp, constants
 boolean    parse and format for bool
+heap       allocate / dispose memory; query bytes available
 random     splitmix64 prng
 clock      monotonic timing
 time       wall clock and calendar decomposition

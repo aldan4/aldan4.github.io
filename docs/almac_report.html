@@ -721,8 +721,6 @@ comment      = ( &quot;#&quot; | &quot;--&quot; ) { any-char-except-newline } ne
 <p>the following procedures are in scope at the top level of every
 module.</p>
 <pre>
-fn new address (n s64)                  allocate n bytes, return address
-fn dispose (p&amp; address)                 free a block allocated by new
 fn length s64 (x)                       element count of array or slice
 fn and bool (b0, b1, ...)               short-circuit conjunction
 fn or bool (b0, b1, ...)                short-circuit disjunction
@@ -756,9 +754,12 @@ fn parse u8 (s string) raises
 <p>bytes — operations on byte buffers viewed as slices of u8. copy is a
 forward memcpy and is unsafe on overlapping ranges where the
 destination follows the source; move is a memmove that picks copy
-direction from the pointer ordering and is safe for any overlap.</p>
+direction from the pointer ordering and is safe for any overlap.
+fill writes a single u8 value to every byte of the buffer; clear is
+fill with value 0.</p>
 <pre>
 fn clear (buf&amp; string)
+fn fill (buf&amp; string, value u8)
 fn copy string (src string, dst&amp; string)
 fn move string (src string, dst&amp; string)
 fn equal bool (a string, b string)
@@ -824,6 +825,15 @@ const highest    # most-positive finite f64
 <pre>
 fn format string (buf&amp; string, v bool) raises
 fn parse bool (s string) raises
+</pre>
+<p>heap — untyped heap allocation. `new` and `dispose` are intrinsics
+backed by the host allocator; `available` reports the bytes the host
+can still hand out (the dev host treats itself as effectively
+unbounded).</p>
+<pre>
+fn new address (n s64)                  allocate n bytes, return address
+fn dispose (p&amp; address)                 free a block allocated by new
+fn available s64 ()                     bytes the host can still hand out
 </pre>
 <p>random — pseudo-random number generation. the state record
 encapsulates a single 64-bit splitmix64 seed.</p>

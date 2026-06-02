@@ -46,8 +46,11 @@
 <h3>sessions</h3>
 <p>a complete short session, from prompt to prompt:</p>
 <pre>
-&gt; import '/a/tools/jot
-&gt; jot.in '/a/notes/today
+&gt; cd '/a
+&gt; import 'tools/jot
+&gt; mkdir 'notes
+&gt; touch 'notes/today.moff
+&gt; jot.in 'notes/today.moff
 ... editor takes the screen, operator edits, ctrl-s saves, ctrl-q exits
 &gt; ls
 notes
@@ -65,7 +68,7 @@ almac
 import '/a/tools/gaze
 
 fn log () raises:
-  gaze.at '/a/notes/log;;
+  gaze.at '/a/notes/log.moff;;
 </pre>
 <p>after boot, the operator types log at the prompt and the pager opens on the log file. a zero-argument call needs no parentheses; the shell calls log automatically because the prompt expects a value, not a function.</p>
 <p>rc.alm is itself a text file and is edited with jot. an installation that does not require any customisation may omit the file entirely; the shell will not complain about its absence.</p>
