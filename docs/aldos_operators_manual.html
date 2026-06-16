@@ -18,7 +18,7 @@ distinguished from that of the user. a user invokes a program and,
 when the program has completed, has no further duty toward the system.
 the operator is permanently responsible for the condition of the
 machine. the operator determines which programs are present on the
-disk, which libraries are made available at boot, and the state in
+disk, which modules are made available at boot, and the state in
 which the system is left between sessions. when the disk fills, the
 operator reclaims it. when a program fails to load, the operator
 identifies the cause.</p>
@@ -32,18 +32,37 @@ before assuming the role.</p>
 <h2 id="how-the-system-works">how the system works</h2>
 <p>aldos is built from a small number of moving parts. the operator
 should learn each before the prompt is useful.</p>
+<p>the system is built in layers, each with its own region of the
+machine's memory. lowest is the firmware in the boot rom. it brings
+the machine up, loads the kernel, and owns every hardware driver —
+the screen and its cursor, the keyboard, the disk, the sound channel,
+the clock — which it offers to the layers above through a single
+fixed call table. above the firmware sits the kernel; above the
+kernel, the operating-system interface; above that, the almac
+environment with its core modules; and at the top, the applications
+the operator runs. each layer reaches the one beneath it through a
+fixed, named door, never by reaching around it.</p>
 <p>the kernel is the part of the system that is always running. it
-schedules tasks, carries messages between them, and owns the machine's
-hardware. nothing else touches the disk or the screen except through
-the kernel.</p>
+schedules tasks, carries messages between them, manages memory and the
+volumes mounted as drives, and loads programs and modules from the
+disk. it touches no device itself: every access to the screen, the
+disk, or the keyboard is a call through the firmware's call table.</p>
 <p>a task is a single thread of execution. a process is a task together
 with a loaded program and a working directory. the system holds up to
 sixty-four of each. when both are exhausted, no further programs can
 be started until something exits.</p>
-<p>libraries are modules of code loaded from disk on demand. the kernel
-does not link programs in advance; the library manager fetches each
-library the first time it is named, and keeps it in memory until the
-system shuts down. up to sixty-four libraries may be loaded at once.</p>
+<p>the operating-system interface is how a program asks the kernel for
+service. it is a single set of named operations — over memory,
+processes, files, directories, the working directory, devices, and
+logging — published at a fixed address when the kernel starts. every
+resident command and every program reaches the disk, the console, and
+the rest of the machine through this one interface; there is no other
+door into the kernel.</p>
+<p>modules are units of almac code kept on the disk. the kernel does not
+link programs in advance; almac compiles a module the first time it is
+named in an import and keeps it in its working image until the session
+ends. the core modules — the clock, the screen, the heap, files,
+directories, and the rest — are named the same way.</p>
 <p>the console is the operator's only window into the running system. it
 is a fixed text grid and a keyboard, provided by the machine firmware.
 there is no second screen, no log file the operator must tail, and no
@@ -51,16 +70,17 @@ graphical mode.</p>
 <p>files and volumes are how the disk is organised. a volume is a mounted
 unit of storage; each volume sits on a letter drive. files live in
 directories within a volume. there is no shared root above the drives.</p>
-<p>messages are how tasks talk. one task sends, another receives, the
-receiver replies. the operator never sees a message change hands, but
-every service the system offers, including the disk, the console, and
-the library manager, is reached this way.</p>
+<p>messages are how tasks talk to one another. one task sends, another
+receives, the receiver replies. the operator never sees a message
+change hands; it is the means by which separate tasks — the disk
+server and the programs that call upon it, for one — coordinate their
+work.</p>
 <p>the operator should keep one distinction in mind. some things are
 resident in the kernel and are always there: the scheduler, the
-message dispatch, the memory pool. other things are loaded only when
-needed: libraries, programs, the shell itself. a fault in something
-resident stops the machine; a fault in something loaded stops only
-that one program.</p>
+message dispatch, the memory pool, the operating-system interface.
+other things are loaded only when needed: modules, programs, the
+shell itself. a fault in something resident stops the machine; a fault
+in something loaded stops only that one program.</p>
 <h2 id="the-console">the console</h2>
 <h3>command line</h3>
 <p>the console runs the almac shell. the prompt is a greater-than sign
@@ -72,8 +92,9 @@ followed by a space:</p>
 compound or an unfinished expression, the shell continues the line
 with a period and a space:</p>
 <pre>
-&gt; fn greet ():
-.   say &quot;hello&quot;;;
+&gt; fn greet () {
+.   tty.say &quot;hello&quot;;
+. }
 </pre>
 <p>whatever the operator types at the prompt is almac source. there are
 no separate shell commands in the unix sense. the resident commands
@@ -106,7 +127,7 @@ entry; the operator must submit or abandon what is already typed.</p>
 notes
 tools
 games
-init
+demos
 almac
 &gt;
 </pre>
@@ -127,8 +148,9 @@ keep:</p>
 <pre>
 import '/a/tools/gaze
 
-fn log () raises:
-  gaze.at '/a/notes/log.moff;;
+fn log () raises storage_fault, data_fault, resource_fault {
+  gaze.at '/a/notes/log.moff;
+}
 </pre>
 <p>after boot, the operator types log at the prompt and the pager opens
 on the log file. a zero-argument call needs no parentheses; the shell
@@ -144,8 +166,9 @@ single dot refers to the current directory; two dots refer to the
 parent. a path that does not begin with a slash is taken as relative
 to the working directory.</p>
 <p>drive a is the boot volume. it holds the kernel image, the shell in
-/a/almac, the tools in /a/tools, the games in /a/games, and whatever
-files the operator has placed on the disk. drive a is read-write.</p>
+/a/almac, the tools in /a/tools, the games in /a/games, the
+demonstrations in /a/demos, and whatever files the operator has placed
+on the disk. drive a is read-write.</p>
 <p>drive b, when present, is a read-only passthrough to the filesystem of
 the machine that hosts aldan. it appears only when the machine was
 started with host access enabled, and is absent on a sealed
@@ -155,7 +178,7 @@ keyboard, the display, the disk, or the sound channel; the kernel
 resolves the name. there are no port numbers, no interrupt vectors,
 and no device addresses for the operator to learn.</p>
 <p>the disk server is a single task that holds the disk. every read and
-every write, from the shell, from a library, or from a program, is
+every write, from the shell, from a module, or from a program, is
 queued through it. the operator should not assume that two writes
 issued in quick succession are interleaved; they are serialised, in
 the order the disk server received them.</p>
@@ -167,12 +190,13 @@ firmware needs no input and the operator may not interrupt it.</p>
 operator who watches the console during boot can identify the last
 step that succeeded.</p>
 <ul>
-<li>the firmware clears memory and enters the kernel.</li>
-<li>the kernel brings up the task manager and the disk server.</li>
-<li>the boot volume is mounted at drive a from the first bootable adfs partition.</li>
+<li>the firmware brings the machine to a usable state. it sets up the system stack, initialises the screen and the shared cursor, readies the sound channel, and installs the trap table.</li>
+<li>the firmware reads the kernel image from the boot volume and transfers control to it. on failure it writes a diagnostic to the screen and halts.</li>
+<li>the kernel establishes its runtime, binds its drivers to the firmware call table, and publishes the operating-system interface at its fixed address. it brings up the task manager, constructs the first task, and starts the scheduler.</li>
+<li>the boot task starts the disk server and mounts the boot volume at drive a from the first bootable adfs partition.</li>
 <li>if host access is configured, the host filesystem is mounted at drive b. a failure here is not fatal; the system continues without it.</li>
-<li>the file /a/almac/almac.run, the shell, is loaded and run as the first process.</li>
-<li>if the file /a/almac/rc.alm exists, the shell evaluates it before issuing the first prompt.</li>
+<li>the file /a/almac/almac.run, the shell, is loaded and run as the first program.</li>
+<li>almac loads its core modules and, if the file /a/almac/rc.alm exists, evaluates it — importing the standing applications — before issuing the first prompt.</li>
 </ul>
 <p>if the boot does not reach the prompt, the operator should read the
 console. the last line printed names the step that did not complete.
@@ -186,11 +210,6 @@ mutable data, and a reservation for the stack, together with a table
 of relocations the loader applies when the file is brought into
 memory. the rune header carries a magic number and a machine
 identifier; the loader will refuse a file with the wrong machine.</p>
-<p>a library is a rune file with the extension .lib. it differs from a
-.run only in what its entry function returns: a library returns the
-address of a vtable through which other code calls into it. the
-library manager identifies libraries by base name alone, and two
-libraries that share a base name cannot both be loaded.</p>
 <p>the lifecycle of a program is fixed. the loader opens the file,
 validates the magic and the machine, allocates memory for the four
 sections, copies them in, applies the relocations, zeroes the
@@ -212,48 +231,75 @@ its entry.</p>
 <h3>import</h3>
 <p>name: import.</p>
 <p>synopsis: import 'name. import 'name, 'name, ...</p>
-<p>description: load a library from the disk. the operator gives the path
-to the library file, without the .lib extension. several libraries may
-be loaded with a single import.</p>
+<p>description: import a module from the disk. the operator gives the path
+to the module's source file, without the .alm extension; the shell
+compiles the module on demand and keeps it for the session. several
+modules may be imported with a single import.</p>
 <p>options: none.</p>
 <p>examples:</p>
 <pre>
 &gt; import '/a/tools/jot
 &gt; import '/a/tools/gaze, '/a/games/snake
 </pre>
-<p>notes: a library that is already loaded is not loaded again. an import
-that names a library the manager cannot find raises a fault and the
+<p>notes: a module that is already imported is not imported again. an
+import that names a module the shell cannot find raises a fault and the
 line is rejected.</p>
-<h3>say</h3>
-<p>name: say.</p>
-<p>synopsis: say expression { &quot;,&quot; expression }.</p>
+<h3>tty.say</h3>
+<p>name: tty.say.</p>
+<p>synopsis: tty.say expression { &quot;,&quot; expression }.</p>
 <p>description: write each expression to the console; a newline is
-appended after the last. several values may be passed in one call.</p>
+appended after the last. several values may be passed in one call. say
+belongs to the tty module, which the default rc.alm imports, so it is
+available at the prompt as tty.say with no further import.</p>
 <p>options: none.</p>
 <p>examples:</p>
 <pre>
-&gt; say &quot;hello&quot;
+&gt; tty.say &quot;hello&quot;
 hello
-&gt; say (1 + 2)
+&gt; tty.say (1 + 2)
 3
-&gt; say &quot;x = &quot;, 42
+&gt; tty.say &quot;x = &quot;, 42
 x = 42
 </pre>
 <p>notes: none.</p>
-<h3>sayin</h3>
-<p>name: sayin.</p>
-<p>synopsis: sayin expression { &quot;,&quot; expression }.</p>
+<h3>tty.sayin</h3>
+<p>name: tty.sayin.</p>
+<p>synopsis: tty.sayin expression { &quot;,&quot; expression }.</p>
 <p>description: write each expression to the console with no trailing
 newline. used when the operator wishes to build a single line of
-output from several calls.</p>
+output from several calls. like tty.say, it comes from the tty module
+imported by the default rc.alm.</p>
 <p>options: none.</p>
 <p>examples:</p>
 <pre>
-&gt; sayin &quot;x = &quot;
-&gt; say 42
+&gt; tty.sayin &quot;x = &quot;
+&gt; tty.say 42
 x = 42
 </pre>
 <p>notes: none.</p>
+<h3>clear</h3>
+<p>name: clear.</p>
+<p>synopsis: clear.</p>
+<p>description: clear the screen and return the cursor to the top-left
+corner.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; clear
+</pre>
+<p>notes: clear is defined in the default rc.alm.</p>
+<h3>date</h3>
+<p>name: date.</p>
+<p>synopsis: date.</p>
+<p>description: write the current date and time to the console, in the
+form yyyy-mm-dd hh:mm:ss.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; date
+2026-06-16 14:30:00
+</pre>
+<p>notes: date is defined in the default rc.alm.</p>
 <h3>ls</h3>
 <p>name: ls.</p>
 <p>synopsis: ls.</p>
@@ -263,7 +309,10 @@ entry is written on its own line.</p>
 <p>examples:</p>
 <pre>
 &gt; ls
-[ &quot;.&quot;, &quot;..&quot;, &quot;tools&quot;, &quot;games&quot;, &quot;init&quot;, &quot;almac&quot; ]
+tools
+games
+demos
+almac
 </pre>
 <p>notes: ls lists the current working directory only and takes no
 argument. to list another directory, the operator changes into it
@@ -419,5 +468,37 @@ steer. ctrl-q exits.</p>
 </pre>
 <p>notes: the score is shown at the top of the screen and is not
 preserved between runs.</p>
+<h3>sieve</h3>
+<p>name: sieve.</p>
+<p>synopsis: sieve.run.</p>
+<p>description: a processor benchmark. sieve runs the sieve of
+eratosthenes repeatedly over a fixed window and returns the greatest
+number of passes it completed in that window — a measure of processor
+speed. the value is printed at the prompt.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; import '/a/tools/sieve
+&gt; sieve.run
+... the benchmark runs for about a second
+12345
+</pre>
+<p>notes: none.</p>
+<h3>golife</h3>
+<p>name: golife.</p>
+<p>synopsis: golife.play.</p>
+<p>description: a demonstration of conway's game of life. golife takes
+the console and evolves a grid of cells one generation at a time.
+space pauses and resumes, r reseeds the grid at random, and ctrl-q
+exits. the generation and population counts are shown above the grid.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; import '/a/demos/golife
+&gt; golife.play
+... the grid evolves, operator watches, ctrl-q exits
+&gt;
+</pre>
+<p>notes: none.</p>
 </body>
 </html>
