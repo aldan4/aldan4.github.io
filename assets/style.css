@@ -16,3 +16,10 @@ pre, code, kbd, samp {
 a {
     color: #ff8c1a;
 }
+img.thumb {
+    width: 120px;
+    height: auto;
+    vertical-align: middle;
+    margin-right: 0.6em;
+    border: 1px solid #ff8c1a;
+}
