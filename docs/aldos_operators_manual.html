@@ -134,7 +134,7 @@ almac
 <h3>the startup script</h3>
 <p>when the shell begins, after the boot sequence has completed and
 before the first prompt is issued, it looks for the file
-/a/almac/rc.alm. if the file is present, the shell evaluates it as
+/a/rc.alm. if the file is present, the shell evaluates it as
 almac source in the global namespace. if it is absent, the shell
 proceeds directly to the prompt.</p>
 <p>rc.alm is the operator's point of customisation. the operator places
@@ -165,8 +165,9 @@ within the drive. forward slash separates directory components. a
 single dot refers to the current directory; two dots refer to the
 parent. a path that does not begin with a slash is taken as relative
 to the working directory.</p>
-<p>drive a is the boot volume. it holds the kernel image, the shell in
-/a/almac, the tools in /a/tools, the games in /a/games, the
+<p>drive a is the boot volume. it holds the kernel image, the shell
+/a/almac.run with its core modules in /a/core, the tools in /a/tools,
+the games in /a/games, the
 demonstrations in /a/demos, and whatever files the operator has placed
 on the disk. drive a is read-write.</p>
 <p>drive b, when present, is a read-only passthrough to the filesystem of
@@ -193,15 +194,15 @@ step that succeeded.</p>
 <li>the firmware brings the machine to a usable state. it sets up the system stack, initialises the screen and the shared cursor, readies the sound channel, and installs the trap table.</li>
 <li>the firmware reads the kernel image from the boot volume and transfers control to it. on failure it writes a diagnostic to the screen and halts.</li>
 <li>the kernel establishes its runtime, binds its drivers to the firmware call table, and publishes the operating-system interface at its fixed address. it brings up the task manager, constructs the first task, and starts the scheduler.</li>
-<li>the boot task starts the disk server and mounts the boot volume at drive a from the first bootable adfs partition.</li>
+<li>the boot task starts the disk server and mounts the boot volume at drive a from the raw merefs volume at the start of the boot disk.</li>
 <li>if host access is configured, the host filesystem is mounted at drive b. a failure here is not fatal; the system continues without it.</li>
-<li>the file /a/almac/almac.run, the shell, is loaded and run as the first program.</li>
-<li>almac loads its core modules and, if the file /a/almac/rc.alm exists, evaluates it — importing the standing applications — before issuing the first prompt.</li>
+<li>the file /a/almac.run, the shell, is loaded and run as the first program.</li>
+<li>almac loads its core modules and, if the file /a/rc.alm exists, evaluates it — importing the standing applications — before issuing the first prompt.</li>
 </ul>
 <p>if the boot does not reach the prompt, the operator should read the
 console. the last line printed names the step that did not complete.
 the operator should suspect, in order: a corrupt or missing file at
-the named step, a damaged adfs partition, and a hardware fault.
+the named step, a damaged merefs volume, and a hardware fault.
 specific diagnostic codes are not yet stable and are not listed here.</p>
 <h2 id="programs">programs</h2>
 <p>a program in aldos is a file in the rune format. it has the extension
