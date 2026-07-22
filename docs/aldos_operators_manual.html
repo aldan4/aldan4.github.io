@@ -103,7 +103,7 @@ available at the prompt with no import required.</p>
 <p>to run an app, the operator imports its module and calls its entry
 function:</p>
 <pre>
-&gt; import '/a/tools/jot
+&gt; import '/a/modules/text/jot
 &gt; jot.in '/a/notes/today
 </pre>
 <h3>editing</h3>
@@ -118,7 +118,7 @@ entry; the operator must submit or abandon what is already typed.</p>
 <p>a complete short session, from prompt to prompt:</p>
 <pre>
 &gt; cd '/a
-&gt; import 'tools/jot
+&gt; import 'modules/text/jot
 &gt; mkdir 'notes
 &gt; touch 'notes/today.moff
 &gt; jot.in 'notes/today.moff
@@ -134,7 +134,7 @@ almac
 <h3>the startup script</h3>
 <p>when the shell begins, after the boot sequence has completed and
 before the first prompt is issued, it looks for the file
-/a/almac/rc.alm. if the file is present, the shell evaluates it as
+/a/rc.alm. if the file is present, the shell evaluates it as
 almac source in the global namespace. if it is absent, the shell
 proceeds directly to the prompt.</p>
 <p>rc.alm is the operator's point of customisation. the operator places
@@ -146,9 +146,9 @@ it at the first prompt.</p>
 <p>a short example. an operator who reads the system log daily might
 keep:</p>
 <pre>
-import '/a/tools/gaze
+import '/a/modules/text/gaze
 
-fn log () raises storage_fault, data_fault, resource_fault {
+fn log () raises storage_fault | data_fault | resource_fault {
   gaze.at '/a/notes/log.moff;
 }
 </pre>
@@ -165,9 +165,12 @@ within the drive. forward slash separates directory components. a
 single dot refers to the current directory; two dots refer to the
 parent. a path that does not begin with a slash is taken as relative
 to the working directory.</p>
-<p>drive a is the boot volume. it holds the kernel image, the shell in
-/a/almac, the tools in /a/tools, the games in /a/games, the
-demonstrations in /a/demos, and whatever files the operator has placed
+<p>drive a is the boot volume. it holds the kernel image, the shell
+/a/almac.run with its core modules in /a/core, the text tools in
+/a/modules/text, the graphics tools in /a/modules/graphics, the games in
+/a/modules/games, the math programs in /a/modules/math, the
+demonstrations in /a/modules/demos, and whatever files the operator has
+placed
 on the disk. drive a is read-write.</p>
 <p>drive b, when present, is a read-only passthrough to the filesystem of
 the machine that hosts aldan. it appears only when the machine was
@@ -193,15 +196,15 @@ step that succeeded.</p>
 <li>the firmware brings the machine to a usable state. it sets up the system stack, initialises the screen and the shared cursor, readies the sound channel, and installs the trap table.</li>
 <li>the firmware reads the kernel image from the boot volume and transfers control to it. on failure it writes a diagnostic to the screen and halts.</li>
 <li>the kernel establishes its runtime, binds its drivers to the firmware call table, and publishes the operating-system interface at its fixed address. it brings up the task manager, constructs the first task, and starts the scheduler.</li>
-<li>the boot task starts the disk server and mounts the boot volume at drive a from the first bootable adfs partition.</li>
+<li>the boot task starts the disk server and mounts the boot volume at drive a from the raw merefs volume at the start of the boot disk.</li>
 <li>if host access is configured, the host filesystem is mounted at drive b. a failure here is not fatal; the system continues without it.</li>
-<li>the file /a/almac/almac.run, the shell, is loaded and run as the first program.</li>
-<li>almac loads its core modules and, if the file /a/almac/rc.alm exists, evaluates it — importing the standing applications — before issuing the first prompt.</li>
+<li>the file /a/almac.run, the shell, is loaded and run as the first program.</li>
+<li>almac loads its core modules and, if the file /a/rc.alm exists, evaluates it — importing the standing applications — before issuing the first prompt.</li>
 </ul>
 <p>if the boot does not reach the prompt, the operator should read the
 console. the last line printed names the step that did not complete.
 the operator should suspect, in order: a corrupt or missing file at
-the named step, a damaged adfs partition, and a hardware fault.
+the named step, a damaged merefs volume, and a hardware fault.
 specific diagnostic codes are not yet stable and are not listed here.</p>
 <h2 id="programs">programs</h2>
 <p>a program in aldos is a file in the rune format. it has the extension
@@ -238,8 +241,8 @@ modules may be imported with a single import.</p>
 <p>options: none.</p>
 <p>examples:</p>
 <pre>
-&gt; import '/a/tools/jot
-&gt; import '/a/tools/gaze, '/a/games/snake
+&gt; import '/a/modules/text/jot
+&gt; import '/a/modules/text/gaze, '/a/modules/games/snake
 </pre>
 <p>notes: a module that is already imported is not imported again. an
 import that names a module the shell cannot find raises a fault and the
@@ -427,7 +430,7 @@ buffer to the file. ctrl-q exits and returns the console to the shell.</p>
 <p>options: none.</p>
 <p>examples:</p>
 <pre>
-&gt; import '/a/tools/jot
+&gt; import '/a/modules/text/jot
 &gt; jot.in '/a/notes/today
 ... editor takes the screen, operator edits, ctrl-s saves, ctrl-q exits
 &gt;
@@ -445,7 +448,7 @@ page-down scroll half a page. ctrl-q exits.</p>
 <p>options: none.</p>
 <p>examples:</p>
 <pre>
-&gt; import '/a/tools/gaze
+&gt; import '/a/modules/text/gaze
 &gt; gaze.at '/a/notes/log
 ... file fills the screen, operator scrolls, ctrl-q exits
 &gt;
@@ -461,7 +464,7 @@ steer. ctrl-q exits.</p>
 <p>options: none.</p>
 <p>examples:</p>
 <pre>
-&gt; import '/a/games/snake
+&gt; import '/a/modules/games/snake
 &gt; snake.play
 ... game runs, operator steers, ctrl-q exits
 &gt;
@@ -470,20 +473,28 @@ steer. ctrl-q exits.</p>
 preserved between runs.</p>
 <h3>sieve</h3>
 <p>name: sieve.</p>
-<p>synopsis: sieve.run.</p>
-<p>description: a processor benchmark. sieve runs the sieve of
-eratosthenes repeatedly over a fixed window and returns the greatest
-number of passes it completed in that window — a measure of processor
-speed. the value is printed at the prompt.</p>
+<p>synopsis: sieve.bench. sieve.print n.</p>
+<p>description: a processor benchmark and a prime number stream.
+sieve.bench runs the sieve of eratosthenes repeatedly over a fixed
+window and returns the greatest number of passes it completed in that
+window — a measure of processor speed. the value is printed at the
+prompt. sieve.print n prints the primes not exceeding n. programs may
+drain the same stream themselves: sieve.create sets a sieve.stream
+record up, sieve.next hands out one prime at a time until it returns
+false, and sieve.dispose disposes the stream.</p>
 <p>options: none.</p>
 <p>examples:</p>
 <pre>
-&gt; import '/a/tools/sieve
-&gt; sieve.run
+&gt; import '/a/modules/math/sieve
+&gt; sieve.bench
 ... the benchmark runs for about a second
 12345
+&gt; sieve.print 30
+2 3 5 7 11 13 17 19 23 29
 </pre>
-<p>notes: none.</p>
+<p>notes: the stream sieves into a claimed flag store covering numbers up
+to 100000, the greatest n it accepts; asking past that raises a
+contract failure.</p>
 <h3>golife</h3>
 <p>name: golife.</p>
 <p>synopsis: golife.play.</p>
@@ -494,7 +505,7 @@ exits. the generation and population counts are shown above the grid.</p>
 <p>options: none.</p>
 <p>examples:</p>
 <pre>
-&gt; import '/a/demos/golife
+&gt; import '/a/modules/demos/golife
 &gt; golife.play
 ... the grid evolves, operator watches, ctrl-q exits
 &gt;
