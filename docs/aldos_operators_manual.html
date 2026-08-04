@@ -146,10 +146,10 @@ it at the first prompt.</p>
 <p>a short example. an operator who reads the system log daily might
 keep:</p>
 <pre>
-import '/a/modules/text/gaze
+import '/a/modules/text/leaf
 
 fn log () raises storage_fault | data_fault | resource_fault {
-  gaze.at '/a/notes/log.moff;
+  leaf.at '/a/notes/log.moff;
 }
 </pre>
 <p>after boot, the operator types log at the prompt and the pager opens
@@ -242,7 +242,7 @@ modules may be imported with a single import.</p>
 <p>examples:</p>
 <pre>
 &gt; import '/a/modules/text/jot
-&gt; import '/a/modules/text/gaze, '/a/modules/games/snake
+&gt; import '/a/modules/text/leaf, '/a/modules/games/snake
 </pre>
 <p>notes: a module that is already imported is not imported again. an
 import that names a module the shell cannot find raises a fault and the
@@ -393,7 +393,7 @@ buy bread.
 fix the disk light.
 </pre>
 <p>notes: cat is intended for short text files. for a longer file the
-operator should use gaze.</p>
+operator should use leaf.</p>
 <h3>cp</h3>
 <p>name: cp.</p>
 <p>synopsis: cp 'source, 'destination.</p>
@@ -438,22 +438,22 @@ buffer to the file. ctrl-q exits and returns the console to the shell.</p>
 <p>notes: jot edits in memory. no change is written to the disk until the
 operator presses ctrl-s. an operator who quits with ctrl-q before
 saving will lose every change made since the last save.</p>
-<h3>gaze</h3>
-<p>name: gaze.</p>
-<p>synopsis: gaze.at 'path.</p>
-<p>description: a pager for reading a file too long to cat. gaze takes
+<h3>leaf</h3>
+<p>name: leaf.</p>
+<p>synopsis: leaf.at 'path.</p>
+<p>description: a pager for reading a file too long to cat. leaf takes
 the console, displays the first page of the file, and lets the
 operator scroll. the arrow keys scroll one line at a time; page-up and
 page-down scroll half a page. ctrl-q exits.</p>
 <p>options: none.</p>
 <p>examples:</p>
 <pre>
-&gt; import '/a/modules/text/gaze
-&gt; gaze.at '/a/notes/log
+&gt; import '/a/modules/text/leaf
+&gt; leaf.at '/a/notes/log
 ... file fills the screen, operator scrolls, ctrl-q exits
 &gt;
 </pre>
-<p>notes: gaze is read-only. the operator may scroll but cannot edit. to
+<p>notes: leaf is read-only. the operator may scroll but cannot edit. to
 edit a file, use jot.</p>
 <h3>snake</h3>
 <p>name: snake.</p>
@@ -511,5 +511,27 @@ exits. the generation and population counts are shown above the grid.</p>
 &gt;
 </pre>
 <p>notes: none.</p>
+<h3>glance</h3>
+<p>name: glance.</p>
+<p>synopsis: glance.at 'path.</p>
+<p>description: a viewer for pixl images. glance takes the console, reads
+the file, and draws it on the screen with the blit display-list
+command, one byte per pixel through the aurora system palette. an
+image smaller than the 720x480 screen is centred. ctrl-q exits and
+gives the console back.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; import '/a/modules/graphics/glance
+&gt; glance.at '/a/pixels/kandinsky/several_circles.pixl
+... the image fills the screen, ctrl-q exits
+&gt;
+</pre>
+<p>notes: an image larger than the screen is refused, since the display
+processor neither scales nor clips a blit. a file carrying its own
+palette is shown in it — the processor takes a palette window, and
+glance points it at the chunk inside the file. entries the file does
+not supply keep their system-palette colors, and leaving the viewer
+puts the console's palette back.</p>
 </body>
 </html>

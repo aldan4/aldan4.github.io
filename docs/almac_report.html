@@ -845,6 +845,13 @@ defer = &quot;defer&quot; expr &quot;;&quot; .
 <p>a defer statement registers an expression to be evaluated at function
 return or at failure propagation, in last-in first-out order. at most
 eight defers are permitted per function.</p>
+<p>a deferred expression may not raise. it runs on the way out of the
+function — on a return, or with a failure already being carried — so a
+second failure raised there would have nowhere to go; a deferred
+function that can fail must discharge it with a handler of its own. the
+failure being carried is not visible to the deferred expression: it runs
+as ordinary code, and it is restored intact once the defers are done, so
+a handler downstream sees the failure the body raised.</p>
 <pre>
 fn open_and_read(path string) raises storage.fault
     var f file.id {
@@ -1715,10 +1722,10 @@ fn trace (xs ...text.formattable)
 <p>sound — the program-facing audio api, a thin frontend over the aldos
 sound stack (aldos/mixer owns the ring device and mixes two channels;
 aldos/pcm streams sample windows; aldos/apu is the beeper synth). play
-streams an in-memory 24khz mono s8 buffer end to end. begin/ready/fill/
+streams an in-memory 24khz mono s16le buffer end to end. begin/ready/fill/
 finish are that same stream taken apart so a streaming caller can poll
 and redraw between fills; stop aborts. tone sounds a square wave that
-mixes over any pcm playback. (the .wax file player lives in
+mixes over any pcm playback. (the .echo file player lives in
 programs/sound/phono; the mixer lets pcm and beeper play at once.)</p>
 <pre>
 fn play (samples string)
