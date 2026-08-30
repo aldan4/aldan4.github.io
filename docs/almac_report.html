@@ -153,24 +153,34 @@ structtype = &quot;^&quot; type [ &quot;|&quot; &quot;none&quot; ]
 typename  = qualident [ &quot;.&quot; ident ] .
 </pre>
 <p>a type declaration names another type through as or from. type
-byte_count as s64 is a transparent alias — byte_count is fully
-interchangeable with s64 (and, where the target is itself a distinct
-type, the alias names that same distinct type). type id from s64 is a
-distinct nominal type: it shares s64's representation but is a type of
-its own, compatible only with itself — an id neither combines with an
-s64 nor with another distinct type over s64, and crossing to or from the
-base takes an explicit as cast (8.2.5). the distinctness is nominal, like
-an enumeration's (6.5): two separate from declarations over the same base
-are unrelated types. an integer literal still coerces to a distinct type
-over an integer base (var x id; x = 0), and an operator on two values of
-one distinct type yields that same type. a bare typename with neither
-marker (type id s64) is rejected as a typo guard. a structural
-right-hand side — a pointer, array, slice, record, enum, union, or
-function type — carries no marker. from targeting a union-variant
-subtype is rejected (use as). the marker is confined to the declaration:
-in every other type position (a variable, parameter, field, array
-element, or pointer base) a named type is still written bare, and as
-there is the cast operator (8.2.5).</p>
+byte_count as s64 is a transparent alias: it introduces no type of its
+own, binding the name to the target instead, so byte_count and s64 are
+one type rather than two that agree (and where the target is itself a
+distinct type, the alias names that same distinct type). type id from
+s64 is a distinct nominal type: it shares s64's representation but is a
+type of its own, compatible only with itself — an id neither combines
+with an s64 nor with another distinct type over s64, and crossing to or
+from the base takes an explicit as cast (8.2.5). the distinctness is
+nominal, like an enumeration's (6.5): two separate from declarations
+over the same base are unrelated types. an integer literal still coerces
+to a distinct type over an integer base (var x id; x = 0), and an
+operator on two values of one distinct type yields that same type. a
+bare typename with neither marker (type id s64) is rejected as a typo
+guard. a structural right-hand side — a pointer, array, slice, record,
+enum, union, or function type — carries no marker. from targeting a
+union-variant subtype is rejected (use as). the marker is confined to
+the declaration: in every other type position (a variable, parameter,
+field, array element, or pointer base) a named type is still written
+bare, and as there is the cast operator (8.2.5).</p>
+<p>because an alias binds through, its interchangeability is total rather
+than a matter of what a comparison of types will accept: an alias
+reaches everywhere its target does, including the positions that read a
+type's structure rather than its identity. type name as string is a
+string wherever one is written — indexed, sliced, passed and laid out
+as one — and an alias of a named record or array is likewise that
+record or array. two aliases of one target are the same type. from is
+the opposite in each of these: it does introduce a type, which is what
+it is for.</p>
 <p>a typename is a qualified name with an optional trailing variant
 selector: a bare ident names a type in scope, m.t names a type exported
 by module m, and the trailing ident in u.v or m.u.v names a variant
@@ -249,36 +259,37 @@ pointer bars only rebinding it (p = ...), not writing through it (10.1).</p>
 lifetimes. what this governs is assignment of a pointer this function
 owns. when the right-hand side is a whole binding the function owns — a
 local, or a from/into parameter — the assignment moves it: the value is
-copied and the source dies (it becomes unusable until reassigned, exactly
-as a from argument dies, 10.1). when the right-hand side is a mutable
-optional lvalue the function does not own outright — an optional heap or
-record field (q = p^.next), or an optional var/borrow — the assignment
-takes it with null: the link is read and the source slot is left none at
-run time (the runtime none is the death). extracting a non-null pointer
-out of an aggregate slot (q = p^.link, a ^t field) is rejected — there is
-no none to leave behind, so it would silently alias; borrow it instead
-(with, 9.10, or for with, 9.6). a move prevents two owners of one
-resource; a plain read for comparison, for passing as a bare or var
-borrow, or for a with / for with alias is non-consuming and leaves the
-owner usable. dropping a live owner is permitted (a leak, not an error);
-double-ownership and use-after-move are errors.</p>
+copied and the source dies (it becomes unusable until reassigned,
+exactly as a from argument dies, 10.1). when the right-hand side is a
+mutable optional lvalue the function does not own outright — an
+optional heap or record field (q = p^.next), or an optional var/borrow
+— the assignment takes it with null: the link is read and the source
+slot is left none at run time (the runtime none is the death).
+extracting a non-null pointer out of an aggregate slot (q = p^.link, a
+^t field) is rejected — there is no none to leave behind, so it would
+silently alias; borrow it instead (with, 9.10, or for with, 9.6). a move
+prevents two owners of one resource; a plain read for comparison, for
+passing as a bare or var borrow, or for a with / for with alias is
+non-consuming and leaves the owner usable. dropping a live owner is
+permitted (a leak, not an error); double-ownership and use-after-move
+are errors.</p>
 <p>the second half of single-ownership is the alias rule, which keeps a
 borrow from escaping. a typed pointer (^t/^t|none) is an owner when it
-comes from a local, a from/into parameter, or an rvalue (claim, a returning
-call, a move); it is a borrow (an alias) when it comes from a bare or var
-parameter, or a with / for with binding, and the taint follows every
-selector — what you reach through a borrow is itself a borrow. an owner
-has full rights: assign (move), return, store into a field, hand over
-from/into, free. a borrow may only be dereferenced, compared, passed as a
-bare/var argument (re-borrow), or re-aliased with a with / for with; it may
-not be assigned into a binding or field, returned, taken out of an aliased
-structure, or consumed. so a local always owns (an alias can never be
-assigned into it), which is exactly why returning a local, or a local
-record with pointer fields, is always sound. move ownership into a
-structure with an owner (n^.next = head over a from head); alias a place to
-read it with with / for with; never store a borrow. address is exempt —
-value-like at the trusted boundary (9.3), it copies freely — so an address
-carries no alias taint.</p>
+comes from a local, a from/into parameter, or an rvalue (claim, a
+returning call, a move); it is a borrow (an alias) when it comes from a
+bare or var parameter, or a with / for with binding, and the taint
+follows every selector — what you reach through a borrow is itself a
+borrow. an owner has full rights: assign (move), return, store into a
+field, hand over from/into, free. a borrow may only be dereferenced,
+compared, passed as a bare/var argument (re-borrow), or re-aliased with
+a with / for with; it may not be assigned into a binding or field,
+returned, taken out of an aliased structure, or consumed. so a local
+always owns (an alias can never be assigned into it), which is exactly
+why returning a local, or a local record with pointer fields, is always
+sound. move ownership into a structure with an owner (n^.next = head
+over a from head); alias a place to read it with with / for with; never
+store a borrow. address is exempt — value-like at the trusted boundary
+(9.3), it copies freely — so an address carries no alias taint.</p>
 <h3>6.5 enumeration and union types</h3>
 <p>an enumeration lists a fixed set of named variants separated by the bar
 operator; at least one variant is required. its representation is u8,
@@ -341,12 +352,12 @@ must stay closed under the comma that separates the enclosing parameter,
 record-field, or variable list, so that an inline function type carrying
 a raises clause can stand in any of those positions. a value of raising
 type may be called only where those failures are declared or handled.
-the inline marker is not part of the
-signature: it leads a declaration (`inline fn`, see 10.2), so a
-first-class function type — introduced by a bare `fn` — can never
-carry it. the ... marker (10.1) is likewise a property of a declaration,
-not of the type: it may not appear in a first-class function type, and
-the parameter it marks enters the type as an ordinary slice.</p>
+the inline marker is not part of the signature: it leads a declaration
+(`inline fn`, see 10.2), so a first-class function type — introduced by
+a bare `fn` — can never carry it. the ... marker (10.1) is likewise a
+property of a declaration, not of the type: it may not appear in a
+first-class function type, and the parameter it marks enters the type as
+an ordinary slice.</p>
 <h2 id="7-variable-declarations">7. variable declarations</h2>
 <p>a variable declaration introduces one or more named locations, each of a
 given type. a single var heads a comma-separated list of name-and-type
@@ -387,12 +398,13 @@ make into p;                -- also a birth: `make` constructs p (10.1)
 </pre>
 <p>the birth rule has a mirror, the death: an owned pointer whose value has
 been moved out (assigned or passed to a from parameter, 6.4, 10.1) is
-dead — unusable until reassigned — for the rest of the sequence and all
-following paths (a death, unlike a birth, is not undone at block close).
-an optional pointer ^t|none is affine too, but carries no birth rule: a
-fresh one is validly none, so it is usable at once (compared, guarded,
-borrowed); only a moved-dead optional is blocked, and reassigning it
-revives it. guarding a moved-dead optional is thus a use-after-move (9.5).</p>
+dead — unusable until reassigned — for the rest of the sequence and
+all following paths (a death, unlike a birth, is not undone at block
+close). an optional pointer ^t|none is affine too, but carries no birth
+rule: a fresh one is validly none, so it is usable at once (compared,
+guarded, borrowed); only a moved-dead optional is blocked, and
+reassigning it revives it. guarding a moved-dead optional is thus a
+use-after-move (9.5).</p>
 <p>this extends field by field to an aggregate. a local record with
 non-null members, and a ^rec local assigned an address (the trusted
 boundary, 9.3, hands back storage whose non-null fields are not yet
@@ -536,6 +548,20 @@ cast = unary [ &quot;as&quot; type ] .
 <li>any scalar to bool (non-zero is true)</li>
 <li>array of t to slice of t</li>
 <li>an aggregate or a slice to []u8 (string) — a raw byte view: the result borrows the operand's storage, its length the operand's size in bytes. the operand must have addressable backing, so a bare scalar value, having none, is rejected. there is no implicit form of this conversion (an arbitrary value does not silently become bytes); the text module's formattable union (appendix b) gives the variadic printers their own view of any argument instead</li>
+<li>[]u8 (string) to a slice of any other element type — the reverse of the byte view: the result borrows the same storage, its element count the byte count divided by the element's size. a byte count that is not a whole multiple of that size drops the partial trailing element, the division truncating rather than raising. the program asserts the bytes hold values of the element type, the assertion address-to-pointer makes for one value. an array of u8 converts likewise, its byte count being its size</li>
+<li>[]u8 (string) to a scalar type — a load of the leading bytes: the count is dropped and the program asserts the view holds at least one such value. the load needs no alignment. these two, with the byte view above, are what carry a value out to bytes and back, so one byte-keyed module serves every element type (core/collections/array, appendix b)</li>
+</ul>
+<p>neither conversion out of bytes may name a target that carries an
+address anywhere within it — a pointer of either kind, an address, or a
+record, array or union holding one at any depth. a pointer is born from
+a claim, from another pointer, or from the trusted forge below, and
+reading one out of data would be a fourth way in with nothing at the
+site to mark it. the restriction is on this direction alone: taking the
+bytes of a value that holds a pointer stays permitted, since that only
+reveals bits already readable through address and s64, and the bytes so
+taken are inert — they can come back as integers, and a program that
+means to make an address of one writes the forge and says so.</p>
+<ul>
 <li>a pointer (either kind) to address</li>
 <li>address to a pointer of any base type — the program asserts the storage is a valid place for the base type, but not that its non-null members are already valid: those become deferred field obligations, born before the pointee is used as a whole (the field-level birth rule, 7). the base type must be trackable — a non-null under an array element or a union payload cannot be tracked, so a pointer to such a type may not be forged from an address (nor is such a pointer otherwise instantiable). this typing assertion is also made by the implicit form of the conversion, see below</li>
 <li>any integer type to address — the trusted forge, the one place a non-null address is made from raw bits: the program asserts the value is non-zero and names real storage</li>
@@ -802,16 +828,16 @@ for i != 10; i += 1 {
 </pre>
 <p>a for with is the walking-alias form: it traverses a chain of pointers,
 binding ident to each pointee in turn. the seed (before the semicolon)
-and the advance (after it) are both pointer expressions — ^t or ^t|none.
-the loop stops when the cursor reaches none. inside the body ident is a
-body-scoped, mutable alias of the current pointee: it reads and writes
-the node's fields directly (n.value, n.next), and cannot escape the loop
-(it is not addressable, and its name is gone after the body). the seed is
-evaluated once; the advance runs after each iteration and is the target
-of continue. crucially, both the seed and the advance are non-consuming
-reborrows — they read the pointer value without moving or taking it (6.4)
-— so the walked list stays singly-owned and structurally intact. walking
-a moved-dead list is rejected (7).</p>
+and the advance (after it) are both pointer expressions — ^t or
+^t|none. the loop stops when the cursor reaches none. inside the body
+ident is a body-scoped, mutable alias of the current pointee: it reads
+and writes the node's fields directly (n.value, n.next), and cannot
+escape the loop (it is not addressable, and its name is gone after the
+body). the seed is evaluated once; the advance runs after each iteration
+and is the target of continue. crucially, both the seed and the advance
+are non-consuming reborrows — they read the pointer value without
+moving or taking it (6.4) — so the walked list stays singly-owned and
+structurally intact. walking a moved-dead list is rejected (7).</p>
 <pre>
 type node record { next ^node|none, value s64 }
 
@@ -1035,27 +1061,27 @@ parent union type (see 6.5). a parameter has one of three kinds:</p>
 <p>the call-site marker must match the parameter kind: var feeds a variable
 parameter, into constructs an out parameter, from consumes a from
 parameter, and a bare argument an immutable one. no other pairing is
-admitted: a var, into, or from argument to a parameter of another kind is
-a mismatch, and var, into, and from each require a writable lvalue, so a
-read-only argument (a literal or an immutable binding) under any is
-rejected. a pointer parameter is the binding,
-not its pointee: the pointer may not be rebound, but writing through it
-(p^ = ..., p^.f = ..., or passing var p^ to a variable parameter)
-reaches the shared mutable storage and is permitted (6.4). to share a
-writable buffer, then, pass a plain ^t — var is needed only to rebind
-the caller's pointer itself.</p>
+admitted: a var, into, or from argument to a parameter of another kind
+is a mismatch, and var, into, and from each require a writable lvalue,
+so a read-only argument (a literal or an immutable binding) under any is
+rejected. a pointer parameter is the binding, not its pointee: the
+pointer may not be rebound, but writing through it (p^ = ..., p^.f =
+..., or passing var p^ to a variable parameter) reaches the shared
+mutable storage and is permitted (6.4). to share a writable buffer,
+then, pass a plain ^t — var is needed only to rebind the caller's
+pointer itself.</p>
 <p>the last parameter may carry a ... marker before its type, written ...t.
 the marker is a property of the declaration, not of the function type —
 exactly as inline is (10.2): the parameter's type is the slice []t, and
 in the body it is an ordinary, immutable []t (it supports length,
 indexing, and for iteration like any slice). only one parameter may be
 variadic and it must be last; ... and the var/into/from markers are
-mutually exclusive; and the element type t must support assignment — scalars
-(bool, the integers, f64, address, b64, and pointer types) and slice
-types (including string) are admitted, as is a liftable union (6.5),
-while record, array, enumeration, and non-liftable union element types
-are rejected. a slice element is admissible because assigning a slice
-copies its (address, count) pair, not the viewed elements; a
+mutually exclusive; and the element type t must support assignment —
+scalars (bool, the integers, f64, address, b64, and pointer types) and
+slice types (including string) are admitted, as is a liftable union
+(6.5), while record, array, enumeration, and non-liftable union element
+types are rejected. a slice element is admissible because assigning a
+slice copies its (address, count) pair, not the viewed elements; a
 liftable-union element is admissible because each pack slot is filled by
 lifting its argument (8.2.5) rather than by a whole-union copy.</p>
 <p>the marker changes only how a call that names the function is checked.
@@ -1092,11 +1118,17 @@ of the function type (a value cannot be typed inline, and an inline
 function cannot be aliased or pointed to), so it precedes `fn` rather
 than sitting in the signature beside raises. an inline function may not
 declare locals and may not contain return, defer, raise, for, break, or
-continue. it is also barred from failures entirely: an inline
-declaration may not carry a raises clause, and an inline body may not
-call a raising function — even one whose faults its own handlers would
-discharge — since the expanded copy has no frame of its own for the
-dispatch to unwind.</p>
+continue, nor an on handler: a handler unwinds through a frame of its
+own, which the expanded copy does not have. a call to a raising
+function, however, is permitted, under a raises clause naming the
+callees' faults exactly as any body's calls oblige (9.9): the fault
+skips the rest of the copy and carries into the expansion site, where
+the surrounding function handles or propagates it under the ordinary
+rules — calling an inline function obliges the caller exactly as if the
+body's raising calls stood in its place. a thin typed adapter over a
+raising worker so costs nothing: expanded, it is the worker's call. an
+inline asm body (10.4) may likewise carry a raises clause, trusted as
+for any asm body.</p>
 <h3>10.3 forward declarations</h3>
 <p>a signature without a body binds the name to a function value with no
 code address. a later definition with an identical signature patches the
@@ -1222,15 +1254,46 @@ os-call table (memory, files, directories, tasks) — so the host
 boundary is two thin modules, not the whole library.</p>
 <h3>11.4 spec modules</h3>
 <p>at the interactive prompt only, importing a module also re-imports a
-sibling module whose name is the subject's basename plus _spec (core/bit</p>
-<p class="secref"><a>core/bit_spec) when that file exists, so a module and its checks</a></p>
-<p>recompile together. the spec is loaded, not run: it exports an entry
+sibling module whose name is the subject's basename plus _spec (core/bit
+gives core/bit_spec) when that file exists, so a module and its checks
+recompile together. the spec is loaded, not run: it exports an entry
 point — by convention verify — that you call yourself
 (bit_spec.verify), and a failed spec.expect raises
 spec.fault.unexpected, reported at the prompt like any other fault. this
 applies to repl imports only; a program's import list is unaffected, and
 a _spec module is not itself given a spec. core/spec (appendix b) holds
 the expect helper.</p>
+<h3>11.5 setup and teardown</h3>
+<p>a module may define two functions the system calls on its behalf: setup,
+once the module has been loaded, and teardown, before it is unloaded.
+neither is declared by the language and neither is a keyword; they are
+ordinary definitions, recognised by name, and only at module scope. the
+same names at the prompt, or in the startup script, are ordinary names.</p>
+<p>each takes no parameters, returns nothing, and raises nothing; it is
+neither inline nor an alias. a definition of either name that departs
+from this is rejected. the restriction is the point: a hook runs where
+no caller is waiting on it, so it has nowhere to report a failure, and
+one that could raise would raise into nothing.</p>
+<p>setup runs as the last step of loading, after the module's own imports
+have been loaded and set up, and before the importing module continues.
+a hook may therefore call anything the module imports, and a module is
+never used before its setup has run. a module already loaded is not
+loaded again, so setup runs once.</p>
+<p>teardown runs when the image gives a module up — at reset, and when a
+compile unit that imported it fails and is rolled back. the modules are
+taken in reverse order of loading, so a module is torn down before
+anything it imports: an importer's teardown may still use them. it runs
+while the module's code is still in place, which is what makes it the
+place to give back anything held outside the image.</p>
+<p>the pair is for exactly that: state the module installs somewhere the
+image cannot see, and that would outlive it. aldos/taskmgr is the case
+to read — its setup writes the scheduler into the firmware call table
+and its teardown puts the firmware's own routines back, so a machine
+still dispatching through that table never reaches code that a reset has
+reclaimed. a module whose state is its own variables needs neither: the
+image reclaims those wholesale.</p>
+<p>both run on the fiber doing the loading, and must return to it: a hook
+neither switches fibers nor blocks.</p>
 <h2 id="appendix-a-syntax">appendix a — syntax</h2>
 <pre>
 module       = [ importlist ] { declaration }
@@ -1409,7 +1472,13 @@ forward memcpy, unsafe on overlapping ranges where the destination
 follows the source; move is a memmove, safe for any overlap; both return
 the unwritten tail of the destination. fill writes one u8 value to every
 byte; clear is fill with 0. format and parse render and read the quoted
-&quot;...&quot; form.</p>
+&quot;...&quot; form. view is the trusted forge that gives a claimed block its
+slice: a slice is a data address and a count, which is what its two
+arguments already are, so it is an empty inline asm body costing
+nothing. the program asserts the storage is there and outlives the view
+— the same assertion address-to-pointer makes (8.2.5), but with the
+length carried honestly rather than borrowed from an oversized array
+type.</p>
 <pre>
 fn clear (var buffer string)
 fn fill (var buffer string, value u8)
@@ -1419,6 +1488,84 @@ fn equal bool (a string, b string)
 fn compare s64 (a string, b string)
 fn format string (var b string, v string) raises bytes.fault
 fn parse string (var b string, src string) raises bytes.fault
+fn view string (base address, count s64)
+</pre>
+<p>collections/array — a growable heap-backed byte array. it stores bytes
+and nothing else: an element type is supplied by the caller through the
+byte-slice conversions of 8.2.5, which is what stands here in place of
+generics. a value goes in as its byte view and comes back out of view as
+a typed slice or as one scalar, so one module serves every element type
+and the two casts are the only places the program asserts what the bytes
+hold. storage grows by doubling; because growing moves the block, a view
+does not survive the append that outgrows it. a zeroed record is a valid
+empty array, so one may stand as a module variable (7); dispose is
+idempotent and leaves an array a later create can fill again. grow takes
+n more bytes and returns them uninitialised for the caller to write;
+append copies data onto the end.</p>
+<pre>
+type ty record { base s64, count s64, room s64 }
+
+fn create (var self ty, room s64) raises resource.fault
+fn dispose (var self ty)
+fn reset (var self ty)
+fn size s64 (self ty)
+fn capacity s64 (self ty)
+fn view string (self ty)
+fn grow string (var self ty, n s64) raises resource.fault
+fn append (var self ty, data string) raises resource.fault
+</pre>
+<p>collections/bitset — a heap-backed set of bits, n of them from create,
+addressed by index. create builds the set into an out parameter and
+dispose consumes it (from), so a double dispose or a use after one is a
+compile-time error; reset clears every bit.</p>
+<pre>
+type ty record { base address, words bit.slice }
+
+fn create (into self ty, n s64) raises resource.fault
+fn dispose (from self ty)
+fn reset (var self ty)
+fn set (var self ty, i s64)
+fn clear (var self ty, i s64)
+fn test bool (self ty, i s64)
+</pre>
+<p>collections/table — a growable heap-backed hash table, mapping a key of
+key_size bytes to a value of value_size bytes. it knows nothing else
+about either: both cross the boundary through the byte-slice conversions
+of 8.2.5, exactly as the array's elements do, so one module serves every
+pair of types. the two sizes are fixed at create — or, for a table that
+never created, by its first put — and every later key and value must
+match them; put says so with logic.fault.invalid_argument, while get and
+remove stay quiet, a key of the wrong length being one the table
+provably does not hold. storage is one block, a control byte a slot and
+then the slots: a byte is 0 when the slot is empty, 1 when a removal
+emptied it, and otherwise the top seven bits of the key's hash under the
+high bit, so a linear probe compares key bytes only where those seven
+agree. the slot count is a power of two and a claimed block arrives
+zeroed, which makes a fresh table all-empty for free. three slots in
+four may be spoken for; filling past that rehashes into a block twice
+the size, or one of the same size when it was removals rather than
+entries that filled it. because growing moves the block, a view does not
+survive the put that outgrows it. a zeroed record is a valid empty
+table, so one may stand as a module variable (7); dispose is idempotent.
+next, key_at and value_at walk the slots: next hands back the first
+taken slot at or after i, and -1 past the end.</p>
+<pre>
+type ty record { base s64, count s64, used s64, room s64,
+                 key_size s64, value_size s64 }
+
+fn create (var self ty, expect s64, key_size s64, value_size s64)
+  raises resource.fault
+fn dispose (var self ty)
+fn reset (var self ty)
+fn size s64 (self ty)
+fn capacity s64 (self ty)
+fn put (var self ty, key string, value string)
+  raises resource.fault | logic.fault
+fn get string (self ty, key string)
+fn remove bool (var self ty, key string)
+fn next s64 (self ty, i s64)
+fn key_at string (self ty, i s64)
+fn value_at string (self ty, i s64)
 </pre>
 <p>bit — bit-twiddling on b64. shil/shir shift; xor is bitwise
 exclusive-or. incl/excl set and clear a single bit; inclr/exclr a
@@ -1505,10 +1652,10 @@ local (the birth rule, 7), with no ^t|none and guard needed. when the
 claimed type is a record with non-null members, the block comes back
 zeroed and its fields are deferred obligations: born one by one before
 the record is used as a whole (the field-level birth rule, 7). release
-takes its pointer `from` — freeing consumes it (6.4, 7), so the caller's
-binding dies at the call and a use-after-free or double-release is a
-compile-time error. available reports the bytes still claimable; total
-the bytes the pool manages.</p>
+takes its pointer `from` — freeing consumes it (6.4, 7), so the
+caller's binding dies at the call and a use-after-free or double-release
+is a compile-time error. available reports the bytes still claimable;
+total the bytes the pool manages.</p>
 <pre>
 fn claim address (size s64) raises resource.fault   room for size bytes
 fn release (from p address)                          free a claimed block
@@ -1722,11 +1869,12 @@ fn trace (xs ...text.formattable)
 <p>sound — the program-facing audio api, a thin frontend over the aldos
 sound stack (aldos/mixer owns the ring device and mixes two channels;
 aldos/pcm streams sample windows; aldos/apu is the beeper synth). play
-streams an in-memory 24khz mono s16le buffer end to end. begin/ready/fill/
-finish are that same stream taken apart so a streaming caller can poll
-and redraw between fills; stop aborts. tone sounds a square wave that
-mixes over any pcm playback. (the .echo file player lives in
-programs/sound/phono; the mixer lets pcm and beeper play at once.)</p>
+streams an in-memory 24khz mono s16le buffer end to end.
+begin/ready/fill/finish are that same stream taken apart so a streaming
+caller can poll and redraw between fills; stop aborts. tone sounds a
+square wave that mixes over any pcm playback. (the .echo file player
+lives in programs/sound/phono; the mixer lets pcm and beeper play at
+once.)</p>
 <pre>
 fn play (samples string)
 fn begin (w []u8, n s64)

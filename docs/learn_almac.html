@@ -75,15 +75,15 @@ type lineview   []u8
 makes `byte_count` a second name for `s64`, fully interchangeable with
 it. a *distinct* type takes `from` — `type id from s64` shares s64's
 representation but is a type of its own: an `id` won't mix with a plain
-`s64` (or with another distinct type over s64), so a file handle can't be
-added to a byte count by accident. it's the tool for opaque handles.
-crossing between an `id` and its base is an explicit `as` cast
-(`h as s64`, `n as id`); an integer literal still assigns straight in
-(`x = 0`). a structural right-hand side (an array, slice, record, enum,
-union, pointer, or `fn` type) takes neither marker, as above; a bare
-`type id s64` with no marker is rejected. the marker is only for the
-declaration; everywhere else you name a type bare (`var n byte_count`),
-and `as` there is the cast operator.</p>
+`s64` (or with another distinct type over s64), so a file handle can't
+be added to a byte count by accident. it's the tool for opaque handles.
+crossing between an `id` and its base is an explicit `as` cast (`h as
+s64`, `n as id`); an integer literal still assigns straight in (`x =
+0`). a structural right-hand side (an array, slice, record, enum, union,
+pointer, or `fn` type) takes neither marker, as above; a bare `type id
+s64` with no marker is rejected. the marker is only for the declaration;
+everywhere else you name a type bare (`var n byte_count`), and `as`
+there is the cast operator.</p>
 <p>function prototypes go up here too. the bodies live below the `...`.</p>
 <pre>
 fn add s64 (a s64, b s64)
@@ -107,6 +107,32 @@ alone on its own line:</p>
 <pre>
 ...
 </pre>
+<h2 id="3-1-setup-and-teardown">3.1 setup and teardown</h2>
+<p>two names in a module mean something to the system. if you define
+`setup`, it runs once your module has finished loading. if you define
+`teardown`, it runs before your module is thrown away — at `reset`, or
+when a line that imported you fails to compile.</p>
+<pre>
+fn setup () {
+  machine.patch_slot 54, tick;
+}
+
+fn teardown () {
+  machine.restore_slot 54;
+}
+</pre>
+<p>they're not keywords and nothing declares them; they're ordinary
+functions the loader looks up by name. each one takes nothing, returns
+nothing, and raises nothing — there's no caller to hand a fault to.
+write them below the `...` unless you want them callable from outside.</p>
+<p>you probably don't need either. your module's variables are wiped for
+you when the image is. reach for them when your module puts something
+*outside* the image — a firmware slot, a running service, a claimed
+port — that would otherwise still be pointing at your code after it's
+gone. setup puts it there, teardown takes it back.</p>
+<p>your imports are loaded and set up before your setup runs, so it can
+call them. teardowns go in the opposite order — you're torn down before
+anything you import, so yours can still call them too.</p>
 <h2 id="4-vocabulary">4. vocabulary</h2>
 <p>identifiers are a letter followed by letters or digits. underscores
 count as letters. a handful of words are reserved and can't be used as
@@ -181,12 +207,12 @@ and left `none`.</p>
 <p>the other half is the alias rule: a pointer is either an owner (a local,
 a from/into parameter, or something fresh from `claim`) or a borrow (a
 bare/`var` parameter, or a `with`/`for with` alias). an owner can be
-stored, returned, moved, and freed; a borrow can only be read, walked, or
-re-aliased — it may not be stored into a variable or field, returned, or
-taken. so a local always owns, which is why returning a local is always
-fine. to walk a borrowed list, use `for with` (it reborrows, never moves);
-to keep a pointer, receive it `from`. (`address` is exempt — it's a plain
-value at the trusted boundary.)</p>
+stored, returned, moved, and freed; a borrow can only be read, walked,
+or re-aliased — it may not be stored into a variable or field,
+returned, or taken. so a local always owns, which is why returning a
+local is always fine. to walk a borrowed list, use `for with` (it
+reborrows, never moves); to keep a pointer, receive it `from`.
+(`address` is exempt — it's a plain value at the trusted boundary.)</p>
 <pre>
 type node record { next ^node|none, value s64 }
 
@@ -212,11 +238,11 @@ fn pop ^node|none (from head ^node|none) var rest ^node|none {
     return rest;                 -- the new head (ownership handed back)
 }
 </pre>
-<p>`insert` and `pop` take `from head`: the caller hands the list over and its
-binding goes dead, so it cannot keep using a list it no longer owns (6,
-10.1). `heap.release` itself takes `from` for the same reason — freeing a
-pointer consumes it, so a use-after-free or a double release is a compile
-error. a disposer that owns a resource just forwards it on:
+<p>`insert` and `pop` take `from head`: the caller hands the list over and
+its binding goes dead, so it cannot keep using a list it no longer owns
+(6, 10.1). `heap.release` itself takes `from` for the same reason —
+freeing a pointer consumes it, so a use-after-free or a double release
+is a compile error. a disposer that owns a resource just forwards it on:
 `fn dispose (from p ^node) { heap.release from p; }`.</p>
 <h2 id="7-arrays-and-slices">7. arrays and slices</h2>
 <p>`[n]t` is a fixed-length array. `[]t` is a slice — a (data, length)
@@ -498,12 +524,12 @@ fn forever () {
     }
 }
 </pre>
-<p>`for with n = seed; advance { … }` is the walking-alias form: it follows a
-chain of pointers, binding `n` to each pointee, and stops at `none`.
-`seed` and `advance` are pointer expressions; the loop reborrows each step
-non-destructively, so the list you walk is left exactly as you found it
-(see 6). `n` is a mutable alias of the current node — read or write
-`n.value`, `n.next` — and is gone once the body ends.</p>
+<p>`for with n = seed; advance { ... }` is the walking-alias form: it
+follows a chain of pointers, binding `n` to each pointee, and stops at
+`none`. `seed` and `advance` are pointer expressions; the loop reborrows
+each step non-destructively, so the list you walk is left exactly as you
+found it (see 6). `n` is a mutable alias of the current node — read or
+write `n.value`, `n.next` — and is gone once the body ends.</p>
 <pre>
 type node record { next ^node|none, value s64 }
 
@@ -535,16 +561,24 @@ handler — if there is one — or propagates to the caller.</p>
 <p>`raises` lists the failures — never kinds — a function can propagate,
 and is part of its type. you mark a function `raises f` if (and only if)
 some kind of `f` can escape its body, whether from a `raise` or a call
-to a raising function. several failures are separated by `|`
-(`raises f | g`), not by a comma, so the list reads unambiguously even
-when the function type sits inside a comma-separated parameter or field
-list. the compiler tells you if you forget a failure or declare one that
-can't escape.</p>
+to a raising function. several failures are separated by `|` (`raises f</p>
+<table>
+<tbody>
+<tr><td>g`), not by a comma, so the list reads unambiguously even when the</td></tr>
+</tbody>
+</table>
+<p>function type sits inside a comma-separated parameter or field list. the
+compiler tells you if you forget a failure or declare one that can't
+escape.</p>
 <p>handlers live at the end of a function body, before the body's closing
 `}`. each one is `on f: stmts` (a whole failure) or `on f.k: stmts` (one
-kind), and one handler may name several targets separated by `|`
-(`on f | g: stmts`) — no own close, the body's `}` closes both the last
-handler's stmts and the body. completing a handler converts the failure
+kind), and one handler may name several targets separated by `|` (`on f</p>
+<table>
+<tbody>
+<tr><td>g: stmts`) — no own close, the body's `}` closes both the last</td></tr>
+</tbody>
+</table>
+<p>handler's stmts and the body. completing a handler converts the failure
 into a normal return.</p>
 <pre>
 fn parse_or_zero u8 (s string)
@@ -579,10 +613,10 @@ standard-library module written in almac — you import it and qualify
 its members. printing is the one that catches people out: `say`,
 `sayin`, and `ask` are not keywords, they live in `tty`, so it's
 `tty.say` after `import 'core/tty`. allocation is in `heap`
-(`heap.claim` returns the address of a fresh block, `heap.release from p`
-frees it and consumes `p`). the shell-style file ops — cd, ls, mkdir, rmdir, rm, cat, touch,
-cp, mv — aren't builtins either: the repl defines them in rc.alm over
-the file and directory modules.</p>
+(`heap.claim` returns the address of a fresh block, `heap.release from
+p` frees it and consumes `p`). the shell-style file ops — cd, ls,
+mkdir, rmdir, rm, cat, touch, cp, mv — aren't builtins either: the repl
+defines them in rc.alm over the file and directory modules.</p>
 <pre>
 import 'core/tty, 'core/heap
 

@@ -11,76 +11,86 @@
 <p class="subtitle">ortfero</p>
 <h2 id="introduction">introduction</h2>
 <p>aldos is the operating system of the aldan machine. it is intended for
-single-seat operation: one installation, served by one operator, with
-a single console as the only point of interaction.</p>
+single-seat operation: one installation, served by one operator, with a
+single console as the only point of interaction.</p>
 <p>this manual is addressed to the operator. the role is to be
-distinguished from that of the user. a user invokes a program and,
-when the program has completed, has no further duty toward the system.
-the operator is permanently responsible for the condition of the
-machine. the operator determines which programs are present on the
-disk, which modules are made available at boot, and the state in
-which the system is left between sessions. when the disk fills, the
-operator reclaims it. when a program fails to load, the operator
-identifies the cause.</p>
-<p>aldos provides no facility for remote administration. no other party
-may be called upon to maintain, repair, or audit the installation.
-every byte stored on the disk is the consequence of an action taken by
-the operator or of the execution of a program selected by the
-operator. the operator is expected to acknowledge this condition
-before assuming the role.</p>
+distinguished from that of the user. a user invokes a program and, when
+the program has completed, has no further duty toward the system. the
+operator is permanently responsible for the condition of the machine.
+the operator determines which programs are present on the disk, which
+modules are made available at boot, and the state in which the system is
+left between sessions. when the disk fills, the operator reclaims it.
+when a program fails to load, the operator identifies the cause.</p>
+<p>aldos provides no facility for remote administration. no other party may
+be called upon to maintain, repair, or audit the installation. every
+byte stored on the disk is the consequence of an action taken by the
+operator or of the execution of a program selected by the operator. the
+operator is expected to acknowledge this condition before assuming the
+role.</p>
 <blockquote><p>the operator is accountable for every byte on the disk.</p></blockquote>
 <h2 id="how-the-system-works">how the system works</h2>
-<p>aldos is built from a small number of moving parts. the operator
-should learn each before the prompt is useful.</p>
-<p>the system is built in layers, each with its own region of the
-machine's memory. lowest is the firmware in the boot rom. it brings
-the machine up, loads the kernel, and owns every hardware driver —
-the screen and its cursor, the keyboard, the disk, the sound channel,
-the clock — which it offers to the layers above through a single
-fixed call table. above the firmware sits the kernel; above the
-kernel, the operating-system interface; above that, the almac
-environment with its core modules; and at the top, the applications
-the operator runs. each layer reaches the one beneath it through a
-fixed, named door, never by reaching around it.</p>
-<p>the kernel is the part of the system that is always running. it
-schedules tasks, carries messages between them, manages memory and the
-volumes mounted as drives, and loads programs and modules from the
-disk. it touches no device itself: every access to the screen, the
-disk, or the keyboard is a call through the firmware's call table.</p>
-<p>a task is a single thread of execution. a process is a task together
-with a loaded program and a working directory. the system holds up to
-sixty-four of each. when both are exhausted, no further programs can
-be started until something exits.</p>
-<p>the operating-system interface is how a program asks the kernel for
-service. it is a single set of named operations — over memory,
-processes, files, directories, the working directory, devices, and
-logging — published at a fixed address when the kernel starts. every
-resident command and every program reaches the disk, the console, and
-the rest of the machine through this one interface; there is no other
-door into the kernel.</p>
-<p>modules are units of almac code kept on the disk. the kernel does not
-link programs in advance; almac compiles a module the first time it is
-named in an import and keeps it in its working image until the session
-ends. the core modules — the clock, the screen, the heap, files,
-directories, and the rest — are named the same way.</p>
-<p>the console is the operator's only window into the running system. it
-is a fixed text grid and a keyboard, provided by the machine firmware.
-there is no second screen, no log file the operator must tail, and no
-graphical mode.</p>
+<p>aldos is built from a small number of moving parts. the operator should
+learn each before the prompt is useful.</p>
+<p>the system is built in layers, each with its own region of the machine's
+memory. lowest is the firmware in the boot rom. it brings the machine
+up, loads the resident binary, and owns every hardware driver — the
+screen and its cursor, the keyboard, the disk, the host filesystem, the
+sound device, the network, the clock — which it offers to the layers
+above through a single call table it publishes in memory at boot. above
+the firmware sits almac, the resident binary and the only one there is:
+the language, its compiler, and the prompt. above almac comes aldos
+itself — the operating-system services, written in almac and loaded
+from the disk like anything else. above those the core library, and at
+the top the applications the operator runs.</p>
+<p>there is no separate kernel image and no system-call interface. aldos is
+a set of modules — the task manager, the memory manager, the volume
+manager, the filesystem, the service manager — and a program reaches
+one by importing it, exactly as it reaches core/tty or a module of the
+operator's own. every one of them touches the hardware only through the
+firmware's call table, and no driver is written twice.</p>
+<p>a fiber is a single thread of execution, and the scheduler is
+cooperative: a fiber runs until it yields, waits on a device, or
+returns, and nothing takes the processor away from it. the prompt is a
+fiber like any other, which is why a program written to run forever
+holds the console for as long as it runs — unless it is started as a
+service.</p>
+<p>a service is named background work: a fiber the system keeps running
+after the call that started it has returned. the operator lists them
+with services, ends one with stop, and reads what they have printed with
+journal. a service has no screen — the console belongs to whatever is
+in the foreground — so its output goes to the journal under its own
+name instead.</p>
+<p>a hundred times a second the machine takes a timer interrupt. the tick
+switches no fibers; it drives the work that must go on whatever the
+foreground is doing — the sound mixdown, the device probes that wake a
+fiber whose disk transfer or datagram has arrived, and the deadlines
+that rouse a sleeping one, a service running on a period among them.</p>
+<p>modules are units of almac code kept on the disk. nothing is linked in
+advance; almac compiles a module the first time it is named in an import
+and keeps it in its working image until the session ends or reset is
+called. the core modules — the clock, the screen, the heap, files,
+directories, and the rest — are named the same way. a module may define
+a setup and a teardown, which the system runs as the module is loaded
+and as it is given up.</p>
+<p>the console is the operator's only window into the running system. it is
+a text grid and a keyboard, provided by the machine firmware. there is
+no second screen and no log file the operator must tail. a program that
+wants pictures rather than text builds a list of drawing commands, hands
+it to the display processor, and holds the screen until it gives it
+back.</p>
 <p>files and volumes are how the disk is organised. a volume is a mounted
 unit of storage; each volume sits on a letter drive. files live in
-directories within a volume. there is no shared root above the drives.</p>
-<p>messages are how tasks talk to one another. one task sends, another
-receives, the receiver replies. the operator never sees a message
-change hands; it is the means by which separate tasks — the disk
-server and the programs that call upon it, for one — coordinate their
-work.</p>
-<p>the operator should keep one distinction in mind. some things are
-resident in the kernel and are always there: the scheduler, the
-message dispatch, the memory pool, the operating-system interface.
-other things are loaded only when needed: modules, programs, the
-shell itself. a fault in something resident stops the machine; a fault
-in something loaded stops only that one program.</p>
+directories within a volume. there is no shared root above the drives,
+and there are two drives with no provision for a third.</p>
+<p>the operator should keep one distinction in mind. everything runs in one
+address space: the aldos modules, the core library, the operator's own
+definitions and every program are all modules of the one almac image,
+and nothing isolates one from another. a program that writes where it
+should not can therefore damage anything, and what stands between the
+operator and that is the language rather than the machine. one thing is
+caught: a hardware fault raised by a line typed at the prompt returns
+the operator to the prompt with a diagnostic. the same fault in a
+service or any other fiber is not recovered, and stops the machine.</p>
 <h2 id="the-console">the console</h2>
 <h3>command line</h3>
 <p>the console runs the almac shell. the prompt is a greater-than sign
@@ -89,27 +99,38 @@ followed by a space:</p>
 &gt;
 </pre>
 <p>when a line of input is not yet complete, for example an unclosed
-compound or an unfinished expression, the shell continues the line
-with a period and a space:</p>
+compound or an unfinished expression, the shell continues the line with
+a period and a space:</p>
 <pre>
 &gt; fn greet () {
 .   tty.say &quot;hello&quot;;
 . }
 </pre>
-<p>whatever the operator types at the prompt is almac source. there are
-no separate shell commands in the unix sense. the resident commands
-listed later in this manual are functions that the shell makes
-available at the prompt with no import required.</p>
-<p>to run an app, the operator imports its module and calls its entry
-function:</p>
+<p>whatever the operator types at the prompt is almac source. there are no
+separate shell commands in the unix sense. the resident commands listed
+later in this manual are ordinary functions, defined by the standing
+start-up script, which need no import.</p>
+<p>most of the apps on the disk are imported by that same script and bound
+to a bare name, so they too are called without an import:</p>
 <pre>
-&gt; import '/a/modules/text/jot
-&gt; jot.in '/a/notes/today
+&gt; jot '/a/notes/today
+</pre>
+<p>what the script does not import, the operator imports by hand and calls
+through the module's own name:</p>
+<pre>
+&gt; import '/a/modules/math/sieve
+&gt; sieve.bench
+</pre>
+<p>a line the translator refuses is reported and dropped; the report names
+the module and the line within it, then the reason:</p>
+<pre>
+&gt; cd 'nowhere
+[repl:1] unknown symbol
 </pre>
 <h3>editing</h3>
-<p>backspace deletes the character to the left of the cursor. enter
-submits the line. tab inserts two spaces; the shell does not align to
-a tab stop. a single input line holds up to two hundred and fifty-six
+<p>backspace deletes the character to the left of the cursor. enter submits
+the line. tab inserts two spaces; the shell does not align to a tab
+stop. a single input line holds up to two hundred and fifty-six
 characters. a multi-line entry, that is text typed across continuation
 prompts, holds up to four thousand and ninety-six characters in total.
 when either limit is reached the shell refuses further input on that
@@ -118,118 +139,156 @@ entry; the operator must submit or abandon what is already typed.</p>
 <p>a complete short session, from prompt to prompt:</p>
 <pre>
 &gt; cd '/a
-&gt; import 'modules/text/jot
 &gt; mkdir 'notes
 &gt; touch 'notes/today.moff
-&gt; jot.in 'notes/today.moff
+&gt; jot 'notes/today.moff
 ... editor takes the screen, operator edits, ctrl-s saves, ctrl-q exits
 &gt; ls
-notes
-tools
-games
-demos
-almac
+almac.bin
+rc.alm
+rc/
+core/
+aldos/
+modules/
+codex/
+notes/
 &gt;
 </pre>
 <h3>the startup script</h3>
-<p>when the shell begins, after the boot sequence has completed and
-before the first prompt is issued, it looks for the file
-/a/rc.alm. if the file is present, the shell evaluates it as
-almac source in the global namespace. if it is absent, the shell
-proceeds directly to the prompt.</p>
-<p>rc.alm is the operator's point of customisation. the operator places
-in it any imports that should be in effect at the prompt without
-typing them by hand, and any functions that the operator wishes to
-call without first loading a module. anything defined in rc.alm is
-visible at the prompt thereafter, exactly as if the operator had typed
-it at the first prompt.</p>
-<p>a short example. an operator who reads the system log daily might
-keep:</p>
+<p>when the shell begins, after the boot sequence has completed and before
+the first prompt is issued, it looks for the file /a/rc.alm. if the file
+is present, the shell evaluates it as almac source in the global
+namespace. if it is absent, the shell proceeds directly to the prompt.</p>
+<p>rc.alm is the operator's point of customisation. the operator places in
+it any imports that should be in effect at the prompt without typing
+them by hand, and any functions that the operator wishes to call without
+first loading a module. anything defined in rc.alm is visible at the
+prompt thereafter, exactly as if the operator had typed it at the first
+prompt.</p>
+<p>a short example. an operator who reads the system log daily might keep:</p>
 <pre>
-import '/a/modules/text/leaf
+import 'core/storage, 'core/bytes, 'core/resource,
+  '/a/modules/text/leaf
 
-fn log () raises storage_fault | data_fault | resource_fault {
+fn log () raises storage.fault | bytes.fault | resource.fault {
   leaf.at '/a/notes/log.moff;
 }
 </pre>
-<p>after boot, the operator types log at the prompt and the pager opens
-on the log file. a zero-argument call needs no parentheses; the shell
-calls log automatically because the prompt expects a value, not a
-function.</p>
+<p>after boot, the operator types log at the prompt and the pager opens on
+the log file. a zero-argument call needs no parentheses; the shell calls
+log automatically because the prompt expects a value, not a function.</p>
 <p>rc.alm is itself a text file and is edited with jot. an installation
-that does not require any customisation may omit the file entirely;
-the shell will not complain about its absence.</p>
+that does not require any customisation may omit the file entirely; the
+shell will not complain about its absence.</p>
 <h2 id="files-volumes-and-devices">files, volumes and devices</h2>
 <p>paths take the form of a slash, a drive letter, a slash, and the path
-within the drive. forward slash separates directory components. a
-single dot refers to the current directory; two dots refer to the
-parent. a path that does not begin with a slash is taken as relative
-to the working directory.</p>
-<p>drive a is the boot volume. it holds the kernel image, the shell
-/a/almac.run with its core modules in /a/core, the text tools in
-/a/modules/text, the graphics tools in /a/modules/graphics, the games in
-/a/modules/games, the math programs in /a/modules/math, the
-demonstrations in /a/modules/demos, and whatever files the operator has
-placed
-on the disk. drive a is read-write.</p>
-<p>drive b, when present, is a read-only passthrough to the filesystem of
-the machine that hosts aldan. it appears only when the machine was
-started with host access enabled, and is absent on a sealed
-installation. the operator should not assume drive b is available.</p>
+within the drive. forward slash separates directory components. a single
+dot refers to the current directory; two dots refer to the parent. a
+path that does not begin with a slash is taken as relative to the
+working directory.</p>
+<p>drive a is the boot volume. it holds the resident binary /a/almac.bin,
+the start-up script /a/rc.alm and the module it draws its commands from
+in /a/rc, the core library in /a/core, the operating-system modules in
+/a/aldos, and the applications in /a/modules, one directory to a sort —
+text, graphics, sound, games, demos, math, net, compression and system.
+the documents this manual belongs to are in /a/codex, and the sample
+pictures, tunes and recordings in /a/pixels, /a/fotos, /a/plots,
+/a/songs and /a/music. whatever else is on the disk the operator put
+there. drive a is read-write.</p>
+<p>drive b is a passthrough to a single directory on the machine that hosts
+aldan. it is mounted at every boot; there is no configuration that
+removes it, and no installation on which it is absent. what varies is
+whether the directory behind it exists, not whether the drive is there.</p>
+<p>the directory drive b passes through is the one named aldan in the home
+directory of the account that started the machine: /home/ortfero/aldan
+on a unix host, c:\users\ortfero\aldan on a windows host. nothing above
+that directory is reachable from the machine; a path that climbs out of
+it is refused. a windows host creates the directory at start if it is
+absent; on every other host the operator creates it. when the directory
+does not exist, drive b still mounts, but every listing and every open
+on it fails as not found.</p>
+<p>drive b is read-write. a file written there lands in the host's own
+filesystem, outside the boot volume, and is not undone by powering the
+machine down.</p>
+<p>the two drives differ in one way the operator will meet. on drive a,
+creating a file that already exists truncates it and reuses the name; on
+drive b it is refused as already existing. so a command that writes its
+result to a fixed name — cp onto an existing file, compress over a .lz
+it made before — succeeds on the boot volume and fails on the host
+directory until the old file is removed.</p>
 <p>devices are referred to by role, not by port. the operator names the
-keyboard, the display, the disk, or the sound channel; the kernel
-resolves the name. there are no port numbers, no interrupt vectors,
-and no device addresses for the operator to learn.</p>
-<p>the disk server is a single task that holds the disk. every read and
-every write, from the shell, from a module, or from a program, is
-queued through it. the operator should not assume that two writes
-issued in quick succession are interleaved; they are serialised, in
-the order the disk server received them.</p>
+keyboard, the display, the disk, the sound channel or the network; the
+firmware's call table resolves the name. there are no port numbers, no
+interrupt vectors, and no device addresses for the operator to learn.</p>
+<p>there is no disk task. a read or a write is submitted to the device and
+the calling fiber is put to sleep on it; the timer tick probes the
+device and wakes the fiber when the transfer has completed, so the rest
+of the system stays live meanwhile. transfers are serialised in the
+order they were submitted, and two writes issued in quick succession are
+never interleaved.</p>
+<p>the network is a datagram device: a program opens a socket, sends and
+receives, and closes it. a receive with nothing waiting parks the
+calling fiber the way a disk transfer does, and the same tick wakes it
+when a datagram arrives. sending promises nothing — this is udp — and
+a failed send is reported as a fault rather than retried.</p>
 <h2 id="booting">booting</h2>
 <p>booting is the sequence from power-on to the first prompt. the
 operator's role begins at the moment the machine is powered; the
 firmware needs no input and the operator may not interrupt it.</p>
-<p>each step of the boot prints a line to the console as it completes. an
-operator who watches the console during boot can identify the last
-step that succeeded.</p>
+<p>a successful boot prints nothing until the start-up script runs. the
+console stays as the firmware cleared it, and the first thing written to
+it is whatever rc.alm chooses to say — in the shipped script, two lines
+of heap figures — followed by the prompt. anything printed before that
+is a diagnostic and names the step that failed.</p>
 <ul>
-<li>the firmware brings the machine to a usable state. it sets up the system stack, initialises the screen and the shared cursor, readies the sound channel, and installs the trap table.</li>
-<li>the firmware reads the kernel image from the boot volume and transfers control to it. on failure it writes a diagnostic to the screen and halts.</li>
-<li>the kernel establishes its runtime, binds its drivers to the firmware call table, and publishes the operating-system interface at its fixed address. it brings up the task manager, constructs the first task, and starts the scheduler.</li>
-<li>the boot task starts the disk server and mounts the boot volume at drive a from the raw merefs volume at the start of the boot disk.</li>
-<li>if host access is configured, the host filesystem is mounted at drive b. a failure here is not fatal; the system continues without it.</li>
-<li>the file /a/almac.run, the shell, is loaded and run as the first program.</li>
-<li>almac loads its core modules and, if the file /a/rc.alm exists, evaluates it — importing the standing applications — before issuing the first prompt.</li>
+<li>the firmware brings the machine to a usable state. it publishes its call table into memory, initialises the display processor and the shared cursor, marks the whole operating pool free in the page allocator, clears the screen, and installs the trap table.</li>
+<li>the firmware reads the resident binary /a/almac.bin out of the boot volume's root directory, copies it into memory, and transfers control to it. on failure it writes a diagnostic to the screen and halts.</li>
+<li>almac establishes itself. it registers its primitive types and built-in operations, so that the language is ready to compile.</li>
+<li>almac reads /a/rc.alm. this one read goes straight through the firmware, since the volume manager that would ordinarily perform it is among the modules the script is about to bring up; every later file operation passes through aldos.</li>
+<li>the script's imports pull in the core library and, beneath it, the aldos modules. each module's setup runs as the module is loaded: this is where the task manager writes its scheduler into the firmware's yield and tick slots.</li>
+<li>the aldos modules bring themselves up as they are first used, not in one pass. the task manager seeds the boot fiber on the first yield; the memory manager binds itself to the page allocator on the first claim; the volume manager mounts the boot volume at drive a, from the raw merefs volume at the start of the boot disk, and registers the host filesystem at drive b on the first file operation. a host directory that does not exist is not fatal — drive b mounts, and every operation on it fails as not found.</li>
+<li>the rest of rc.alm defines the shell commands and binds the entry points of the standing applications, and almac issues the first prompt.</li>
 </ul>
 <p>if the boot does not reach the prompt, the operator should read the
-console. the last line printed names the step that did not complete.
-the operator should suspect, in order: a corrupt or missing file at
-the named step, a damaged merefs volume, and a hardware fault.
-specific diagnostic codes are not yet stable and are not listed here.</p>
+console. a failure to load the resident binary is reported by the
+firmware; a failure inside the start-up script is reported by almac in
+the form of a module name, a line number and a reason, and the shell
+goes on to the prompt with whatever the script defined before the bad
+line. the operator should suspect, in order: a corrupt or missing file
+at the named step, a damaged merefs volume, and a hardware fault.</p>
 <h2 id="programs">programs</h2>
-<p>a program in aldos is a file in the rune format. it has the extension
-.run and contains four sections, the code, the read-only data, the
-mutable data, and a reservation for the stack, together with a table
-of relocations the loader applies when the file is brought into
-memory. the rune header carries a magic number and a machine
-identifier; the loader will refuse a file with the wrong machine.</p>
-<p>the lifecycle of a program is fixed. the loader opens the file,
-validates the magic and the machine, allocates memory for the four
-sections, copies them in, applies the relocations, zeroes the
-uninitialised data, and jumps to the entry. when the entry returns,
-the runtime calls each registered destructor in reverse order of
-registration, and the kernel reclaims the process slot.</p>
-<p>almac source files have the extension .alm. they are not executables;
-they are text. the shell compiles them on demand when the operator
-imports them.</p>
+<p>a program in aldos is a module, and a module is a text file with the
+extension .alm. there is no executable format and no loader: the machine
+carries one binary, the resident almac, and everything else is source
+compiled on demand. importing a module compiles it into the running
+image and binds its public names; the compiled code stays there for the
+rest of the session.</p>
+<p>a module has two sections. the first declares what it exports — types,
+constants, and function signatures — and the second defines them. a
+program that means to be called from the prompt exports one entry
+function, and the operator calls it as module.entry, or by the bare name
+the start-up script binds it to.</p>
+<p>two names in a module are special, and neither is declared. setup, if
+the module defines it, runs once the module has been loaded, after
+everything it imports is up. teardown runs when the image gives the
+module up — at reset, and when a compile that imported it fails and is
+rolled back — and modules are torn down in the reverse of the order
+they were loaded. a module that takes something over from the machine
+does it in setup and hands it back in teardown; the task manager, which
+takes the scheduler slots, is the case they were built for.</p>
+<p>nothing reclaims a module while the session lasts. an operator who has
+imported a great deal, or who has just watched a program misbehave, gets
+the boot image back with reset.</p>
 <h2 id="command-reference">command reference</h2>
 <p>each entry in this section follows the same form: name, synopsis,
 description, options, examples, and notes. a field that does not apply
-is written with the value &quot;none&quot;. the commands are grouped in two
-parts. resident commands are bound at the shell prompt and may be
-called without an import. transient commands are apps loaded from the
-disk on demand; the operator imports the module by name before calling
-its entry.</p>
+is written with the value &quot;none&quot;. the commands are grouped in two parts.
+resident commands are the shell's own, defined by the standing start-up
+script and callable at once. applications are modules that live on the
+disk; the script imports most of them too and binds each to a bare name,
+so those are called the same way, and the entry a name stands for is
+given in its notes. an application the script does not import is marked
+as such, and the operator imports it by hand before calling it.</p>
 <p>resident commands.</p>
 <h3>import</h3>
 <p>name: import.</p>
@@ -247,13 +306,34 @@ modules may be imported with a single import.</p>
 <p>notes: a module that is already imported is not imported again. an
 import that names a module the shell cannot find raises a fault and the
 line is rejected.</p>
+<h3>reset</h3>
+<p>name: reset.</p>
+<p>synopsis: reset.</p>
+<p>description: return the shell to the state it had at boot. every loaded
+module is given up, in the reverse of the order it was loaded, each one
+first running its teardown: the services stop and the kernel hands the
+firmware call table back. the shell then discards everything it holds —
+modules, definitions, imports — rebuilds itself, and evaluates
+/a/rc.alm again, so the standing applications and the shell commands
+return as they were at boot.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; reset
+</pre>
+<p>notes: the command is deferred: it takes effect once the line that
+called it has finished, never in the middle of it. anything the operator
+defined or imported at the prompt is gone afterwards; anything named in
+/a/rc.alm comes back. work held on disk is untouched. a running service
+is stopped, not asked — an operator who wants a service to finish
+cleanly should stop it first.</p>
 <h3>tty.say</h3>
 <p>name: tty.say.</p>
 <p>synopsis: tty.say expression { &quot;,&quot; expression }.</p>
-<p>description: write each expression to the console; a newline is
-appended after the last. several values may be passed in one call. say
-belongs to the tty module, which the default rc.alm imports, so it is
-available at the prompt as tty.say with no further import.</p>
+<p>description: write each expression to the console; a newline is appended
+after the last. several values may be passed in one call. say belongs to
+the tty module, which the default rc.alm imports, so it is available at
+the prompt as tty.say with no further import.</p>
 <p>options: none.</p>
 <p>examples:</p>
 <pre>
@@ -269,9 +349,9 @@ x = 42
 <p>name: tty.sayin.</p>
 <p>synopsis: tty.sayin expression { &quot;,&quot; expression }.</p>
 <p>description: write each expression to the console with no trailing
-newline. used when the operator wishes to build a single line of
-output from several calls. like tty.say, it comes from the tty module
-imported by the default rc.alm.</p>
+newline. used when the operator wishes to build a single line of output
+from several calls. like tty.say, it comes from the tty module imported
+by the default rc.alm.</p>
 <p>options: none.</p>
 <p>examples:</p>
 <pre>
@@ -294,8 +374,8 @@ corner.</p>
 <h3>date</h3>
 <p>name: date.</p>
 <p>synopsis: date.</p>
-<p>description: write the current date and time to the console, in the
-form yyyy-mm-dd hh:mm:ss.</p>
+<p>description: write the current date and time to the console, in the form
+yyyy-mm-dd hh:mm:ss.</p>
 <p>options: none.</p>
 <p>examples:</p>
 <pre>
@@ -303,6 +383,22 @@ form yyyy-mm-dd hh:mm:ss.</p>
 2026-06-16 14:30:00
 </pre>
 <p>notes: date is defined in the default rc.alm.</p>
+<h3>calendar</h3>
+<p>name: calendar.</p>
+<p>synopsis: calendar.</p>
+<p>description: write the previous month, the current month and the next
+one side by side, three columns across the console, with the current day
+marked. weeks run from sunday.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; calendar
+       july 2026            august 2026         september 2026
+su mo tu we th fr sa   su mo tu we th fr sa   su mo tu we th fr sa
+...
+</pre>
+<p>notes: calendar reads the machine's clock, so it shows whatever date the
+host is keeping.</p>
 <h3>ls</h3>
 <p>name: ls.</p>
 <p>synopsis: ls.</p>
@@ -312,19 +408,37 @@ entry is written on its own line.</p>
 <p>examples:</p>
 <pre>
 &gt; ls
-tools
-games
-demos
-almac
+almac.bin
+rc.alm
+rc/
+core/
+aldos/
+modules/
+codex/
 </pre>
-<p>notes: ls lists the current working directory only and takes no
-argument. to list another directory, the operator changes into it
-first with cd.</p>
+<p>notes: a directory is written with a trailing slash, a file without one.
+ls lists the current working directory only and takes no argument; to
+list another, the operator uses lsd.</p>
+<h3>lsd</h3>
+<p>name: lsd.</p>
+<p>synopsis: lsd 'path.</p>
+<p>description: list the entries of the directory at the named path, one to
+a line, without changing the working directory. ls is this command
+called on the current directory.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; lsd '/a/modules/text
+jot.alm
+leaf.alm
+</pre>
+<p>notes: a directory is written with a trailing slash. the path may be
+absolute or relative to the working directory.</p>
 <h3>cd</h3>
 <p>name: cd.</p>
 <p>synopsis: cd 'path.</p>
-<p>description: change the working directory to the named path. returns
-the new working directory as a string.</p>
+<p>description: change the working directory to the named path. returns the
+new working directory as a string.</p>
 <p>options: none.</p>
 <p>examples:</p>
 <pre>
@@ -339,8 +453,8 @@ argument; the return value is the working directory.</p>
 <h3>mkdir</h3>
 <p>name: mkdir.</p>
 <p>synopsis: mkdir 'path.</p>
-<p>description: create a new directory at the named path. the parent of
-the new directory must exist.</p>
+<p>description: create a new directory at the named path. the parent of the
+new directory must exist.</p>
 <p>options: none.</p>
 <p>examples:</p>
 <pre>
@@ -363,13 +477,16 @@ sub-directories. the operator should rm the contents first.</p>
 <p>name: touch.</p>
 <p>synopsis: touch 'path.</p>
 <p>description: if the named file does not exist, create it as an empty
-file. if it does exist, update its timestamp.</p>
+file. if it does exist, touch does nothing at all: the file is left as
+it stands, contents and all.</p>
 <p>options: none.</p>
 <p>examples:</p>
 <pre>
 &gt; touch '/a/notes/today
 </pre>
-<p>notes: touch does not create the parent directory.</p>
+<p>notes: touch does not create the parent directory. the machine keeps no
+modification time a touch could bring forward, so this command is only
+ever a way of making an empty file.</p>
 <h3>rm</h3>
 <p>name: rm.</p>
 <p>synopsis: rm 'path.</p>
@@ -397,111 +514,267 @@ operator should use leaf.</p>
 <h3>cp</h3>
 <p>name: cp.</p>
 <p>synopsis: cp 'source, 'destination.</p>
-<p>description: copy the source file to the destination. the destination
-is overwritten if it exists.</p>
+<p>description: copy the source file to the destination. when the
+destination names an existing directory, the source's own final
+component is joined onto it and the copy lands inside; otherwise the
+destination is taken as the literal path of the new file.</p>
 <p>options: none.</p>
 <p>examples:</p>
 <pre>
 &gt; cp '/a/notes/today, '/a/notes/yesterday
+&gt; cp '/a/notes/today, '/b
 </pre>
-<p>notes: cp copies a single file. the destination's parent directory
-must exist.</p>
+<p>notes: cp copies a single file. the destination's parent directory must
+exist. an existing destination file is overwritten on drive a and
+refused on drive b, as described under files, volumes and devices.</p>
 <h3>mv</h3>
 <p>name: mv.</p>
 <p>synopsis: mv 'source, 'destination.</p>
-<p>description: move or rename the source file to the destination. used
-to rename a file within a directory and to move a file from one
-directory to another.</p>
+<p>description: move or rename the source file to the destination. used to
+rename a file within a directory and to move a file from one directory
+to another.</p>
 <p>options: none.</p>
 <p>examples:</p>
 <pre>
 &gt; mv '/a/notes/old, '/a/archive/old
 </pre>
-<p>notes: mv operates on a single file. the destination's parent
-directory must exist.</p>
-<p>transient commands.</p>
-<h3>jot</h3>
-<p>name: jot.</p>
-<p>synopsis: jot.in 'path.</p>
-<p>description: a full-screen text editor. jot takes the console, loads
-the named file into a buffer, and lets the operator move the cursor
-with the arrow keys and edit the buffer in place. ctrl-s writes the
-buffer to the file. ctrl-q exits and returns the console to the shell.</p>
+<p>notes: mv operates on a single file. the destination's parent directory
+must exist.</p>
+<h3>fsck</h3>
+<p>name: fsck.</p>
+<p>synopsis: fsck.</p>
+<p>description: check the boot volume and reclaim what nothing refers to.
+the filesystem's write path is ordered so that the only damage a crash
+can leave is space marked used and referred to by no directory entry;
+fsck rebuilds both allocation maps from the directory tree and gives
+that space back. no file is ever lost or moved by it.</p>
 <p>options: none.</p>
 <p>examples:</p>
 <pre>
-&gt; import '/a/modules/text/jot
-&gt; jot.in '/a/notes/today
+&gt; fsck
+</pre>
+<p>notes: fsck is a program like any other rather than part of the
+filesystem, and it works on drive a only. it is worth running after an
+abrupt power-off; there is no need to run it otherwise.</p>
+<h3>services</h3>
+<p>name: services.</p>
+<p>synopsis: services.</p>
+<p>description: list the background services now running, one name to a
+line. when none is running, it says so.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; services
+no services
+</pre>
+<p>notes: a name identifies a service and only one service may hold it, so
+this listing is also the answer to whether a given name is free. nothing
+on the shipped disk starts a service: a service is something a program
+launches for itself through core/service, and until the operator runs
+such a program this listing stays empty.</p>
+<h3>stop</h3>
+<p>name: stop.</p>
+<p>synopsis: stop 'name.</p>
+<p>description: stop the named service. the service is asked first: it sees
+the request at the next point it looks, and is given a moment to leave
+on its own, which lets its cleanup run and its files close. one that
+does not take the moment is struck off.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; services
+  watcher
+&gt; stop 'watcher
+</pre>
+<p>notes: a service that returns from its own work function unwinds
+properly; one struck off mid-wait does not. an operator who wants a
+service to finish cleanly should stop it and let it, rather than
+resetting the shell out from under it.</p>
+<h3>restart</h3>
+<p>name: restart.</p>
+<p>synopsis: restart 'name.</p>
+<p>description: stop the named service and start it again on a fresh fiber,
+with the work, the cleanup and the period it was launched with. this is
+the only sanctioned way to get a new instance of a name.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; restart 'watcher
+</pre>
+<p>notes: the service must be running. a stopped one has left nothing to
+rebuild from and must be started again by whatever started it first.</p>
+<h3>journal</h3>
+<p>name: journal.</p>
+<p>synopsis: journal.</p>
+<p>description: print what the services have been saying. a service has no
+screen — the console belongs to the foreground — so everything it
+writes goes into a ring of text off to one side, each line headed by the
+service's own name, together with the started and stopped lines the
+system writes itself. journal prints the ring.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; journal
+watcher: started
+watcher: 3 files changed
+</pre>
+<p>notes: the ring holds a fixed number of bytes; when it is full the
+oldest whole line goes, never a fragment. lines lost that way are
+counted, and the count is printed before the text, so a gap in the
+record is always visible as a gap.</p>
+<h3>memory</h3>
+<p>name: memory.</p>
+<p>synopsis: memory.</p>
+<p>description: report what the operating pool is doing: its total and free
+size, the number of live blocks, what has been asked for against what
+has actually been reserved, and the difference between them — the page
+tails that rounding leaves unusable. the live figures are this instant;
+the boot figures cover every block claimed since the machine came up.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; memory
+pool total    : 3712kb
+pool free     : 2860kb
+live blocks   : 34
+...
+</pre>
+<p>notes: a claim of sixteen kilobytes or less is carved out of a shared
+page region and costs close to what it asks for; a larger one is rounded
+up to whole pages, and it is that rounding the waste figures measure.</p>
+<h3>halt</h3>
+<p>name: halt.</p>
+<p>synopsis: halt.</p>
+<p>description: power the machine off. nothing is asked and nothing is
+saved; work not already written to the disk is lost.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; halt
+</pre>
+<p>notes: services are not stopped first and no teardown runs. an operator
+who wants a clean shutdown stops the services and leaves the editors
+before calling it.</p>
+<h3>reboot</h3>
+<p>name: reboot.</p>
+<p>synopsis: reboot.</p>
+<p>description: restart the machine from the reset vector, exactly as a
+power cycle would. the firmware runs again, the resident binary is
+loaded again, and rc.alm is evaluated again.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; reboot
+</pre>
+<p>notes: reset is the cheaper instrument and is usually the one wanted: it
+rebuilds the shell without going back through the firmware. reboot is
+for when the machine itself is in a state the operator does not trust.</p>
+<h3>help</h3>
+<p>name: help.</p>
+<p>synopsis: help.</p>
+<p>description: print the list of shell commands and applications, each
+with its arguments and a line of description, followed by a note on how
+string arguments are written.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; help
+commands:
+  clear                 clear the screen
+  date                  print the current date and time
+...
+</pre>
+<p>notes: the listing is written out by hand in the start-up script's
+command module rather than derived from what is bound, so an operator
+who adds a command of their own adds it there too if it is to appear.</p>
+<p>applications.</p>
+<h3>jot</h3>
+<p>name: jot.</p>
+<p>synopsis: jot 'path.</p>
+<p>description: a full-screen text editor. jot takes the console, loads the
+named file into a buffer, and lets the operator move the cursor with the
+arrow keys and edit the buffer in place. ctrl-s writes the buffer to the
+file. ctrl-q exits and returns the console to the shell.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; jot '/a/notes/today
 ... editor takes the screen, operator edits, ctrl-s saves, ctrl-q exits
 &gt;
 </pre>
-<p>notes: jot edits in memory. no change is written to the disk until the
-operator presses ctrl-s. an operator who quits with ctrl-q before
-saving will lose every change made since the last save.</p>
+<p>notes: jot is jot.in of /a/modules/text/jot, bound by the start-up
+script. jot edits in memory: no change is written to the disk until the
+operator presses ctrl-s, and an operator who quits with ctrl-q before
+saving loses every change made since the last save.</p>
 <h3>leaf</h3>
 <p>name: leaf.</p>
-<p>synopsis: leaf.at 'path.</p>
-<p>description: a pager for reading a file too long to cat. leaf takes
-the console, displays the first page of the file, and lets the
-operator scroll. the arrow keys scroll one line at a time; page-up and
-page-down scroll half a page. ctrl-q exits.</p>
+<p>synopsis: leaf 'path.</p>
+<p>description: a pager for reading a file too long to cat. leaf takes the
+console, displays the first page of the file, and lets the operator
+scroll. the arrow keys scroll one line at a time; page-up and page-down
+scroll half a page. ctrl-q exits.</p>
 <p>options: none.</p>
 <p>examples:</p>
 <pre>
-&gt; import '/a/modules/text/leaf
-&gt; leaf.at '/a/notes/log
+&gt; leaf '/a/codex/aldos_operators_manual.moff
 ... file fills the screen, operator scrolls, ctrl-q exits
 &gt;
 </pre>
-<p>notes: leaf is read-only. the operator may scroll but cannot edit. to
+<p>notes: leaf is leaf.at of /a/modules/text/leaf, bound by the start-up
+script. leaf is read-only: the operator may scroll but cannot edit. to
 edit a file, use jot.</p>
 <h3>snake</h3>
 <p>name: snake.</p>
-<p>synopsis: snake.play.</p>
+<p>synopsis: snake.</p>
 <p>description: a game. a snake moves across the screen, lengthening when
 it eats and ending when it strikes a wall or itself. the arrow keys
 steer. ctrl-q exits.</p>
 <p>options: none.</p>
 <p>examples:</p>
 <pre>
-&gt; import '/a/modules/games/snake
-&gt; snake.play
+&gt; snake
 ... game runs, operator steers, ctrl-q exits
 &gt;
 </pre>
-<p>notes: the score is shown at the top of the screen and is not
+<p>notes: snake is snake.play of /a/modules/games/snake, bound by the
+start-up script. the score is shown at the top of the screen and is not
 preserved between runs.</p>
 <h3>sieve</h3>
 <p>name: sieve.</p>
 <p>synopsis: sieve.bench. sieve.print n.</p>
 <p>description: a processor benchmark and a prime number stream.
-sieve.bench runs the sieve of eratosthenes repeatedly over a fixed
-window and returns the greatest number of passes it completed in that
-window — a measure of processor speed. the value is printed at the
-prompt. sieve.print n prints the primes not exceeding n. programs may
-drain the same stream themselves: sieve.create sets a sieve.stream
-record up, sieve.next hands out one prime at a time until it returns
-false, and sieve.dispose disposes the stream.</p>
+sieve.bench drains the sieve of eratosthenes over and over for a fixed
+window, counts the instructions the processor actually retired while it
+did so, and returns the best rate it reached in whole millions of
+instructions a second. the value is printed at the prompt. sieve.print n
+prints the primes not exceeding n. programs may drain the same stream
+themselves: sieve.create sets a sieve.stream record up, sieve.next hands
+out one prime at a time until it returns false, and sieve.dispose
+disposes the stream.</p>
 <p>options: none.</p>
 <p>examples:</p>
 <pre>
 &gt; import '/a/modules/math/sieve
 &gt; sieve.bench
 ... the benchmark runs for about a second
-12345
+10
 &gt; sieve.print 30
 2 3 5 7 11 13 17 19 23 29
 </pre>
-<p>notes: the stream sieves into a claimed flag store covering numbers up
-to 100000, the greatest n it accepts; asking past that raises a
-contract failure.</p>
+<p>notes: the start-up script does not import sieve; the operator imports
+it. the count is read from the processor's own retired-instruction
+counter, so the figure is a property of the machine rather than of this
+program, and two benchmarks that agree on it are measuring the same
+thing. the stream sieves into a claimed flag store covering numbers up
+to 100000, the greatest n it accepts; asking past that raises a contract
+failure.</p>
 <h3>golife</h3>
 <p>name: golife.</p>
 <p>synopsis: golife.play.</p>
-<p>description: a demonstration of conway's game of life. golife takes
-the console and evolves a grid of cells one generation at a time.
-space pauses and resumes, r reseeds the grid at random, and ctrl-q
-exits. the generation and population counts are shown above the grid.</p>
+<p>description: a demonstration of conway's game of life. golife takes the
+console and evolves a grid of cells one generation at a time. space
+pauses and resumes, r reseeds the grid at random, and ctrl-q exits. the
+generation and population counts are shown above the grid.</p>
 <p>options: none.</p>
 <p>examples:</p>
 <pre>
@@ -510,28 +783,271 @@ exits. the generation and population counts are shown above the grid.</p>
 ... the grid evolves, operator watches, ctrl-q exits
 &gt;
 </pre>
-<p>notes: none.</p>
+<p>notes: the start-up script does not import golife; the operator imports
+it.</p>
 <h3>glance</h3>
 <p>name: glance.</p>
-<p>synopsis: glance.at 'path.</p>
-<p>description: a viewer for pixl images. glance takes the console, reads
-the file, and draws it on the screen with the blit display-list
-command, one byte per pixel through the aurora system palette. an
-image smaller than the 720x480 screen is centred. ctrl-q exits and
-gives the console back.</p>
+<p>synopsis: glance 'path.</p>
+<p>description: a viewer for pixl images, the machine's lossless raster
+format. glance takes the console, reads the file, and draws it on the
+screen with the blit display-list command, one byte per pixel through
+the aurora system palette. an image smaller than the 720x480 screen is
+centred. ctrl-q exits and gives the console back.</p>
 <p>options: none.</p>
 <p>examples:</p>
 <pre>
-&gt; import '/a/modules/graphics/glance
-&gt; glance.at '/a/pixels/kandinsky/several_circles.pixl
+&gt; glance '/a/pixels/kandinsky/several_circles.pixl
 ... the image fills the screen, ctrl-q exits
 &gt;
 </pre>
 <p>notes: an image larger than the screen is refused, since the display
 processor neither scales nor clips a blit. a file carrying its own
 palette is shown in it — the processor takes a palette window, and
-glance points it at the chunk inside the file. entries the file does
-not supply keep their system-palette colors, and leaving the viewer
-puts the console's palette back.</p>
+glance points it at the chunk inside the file. entries the file does not
+supply keep their system-palette colors, and leaving the viewer puts the
+console's palette back. glance is glance.at of
+/a/modules/graphics/glance, bound by the start-up script. a pixl body is
+already laid out the way the display processor wants it, so the file is
+shown where it lies and never copied into a second plane — which is
+what lets a full-screen picture be shown at all.</p>
+<h3>gaze</h3>
+<p>name: gaze.</p>
+<p>synopsis: gaze 'path.</p>
+<p>description: a viewer for foto images, the machine's lossy raster
+format. gaze reads the file, decodes it back to one palette index per
+pixel, and draws it with the blit display-list command. an image smaller
+than the 720x480 screen is centred; ctrl-q exits.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; gaze '/a/fotos/kandinsky/several_circles.foto
+... the image fills the screen, ctrl-q exits
+&gt;
+</pre>
+<p>notes: gaze is gaze.at of /a/modules/graphics/gaze, bound by the
+start-up script. glance is the same viewer over the lossless format, and
+the two differ in where the plane comes from: a pixl body already is the
+plane, while a foto has to be decoded into one. neither scales nor
+clips, so an image larger than the screen is refused.</p>
+<h3>plot</h3>
+<p>name: plot.</p>
+<p>synopsis: plot 'path.</p>
+<p>description: a viewer for the plot format, which is line art written as
+text: a pen that moves without drawing and a pen that draws as it moves,
+one command to a line, in pixels of the 720x480 plane. plot reads the
+file, turns each line into a display-list command, and holds the screen
+until q or escape.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; plot '/a/plots/vicsek.plot
+... the drawing fills the screen, q exits
+&gt;
+</pre>
+<p>notes: plot is plot.show of /a/modules/graphics/plot, bound by the
+start-up script. a picture longer than the display list can hold is
+drawn as far as it fits and reported as truncated; a file too large to
+read is refused outright.</p>
+<h3>galaxy</h3>
+<p>name: galaxy.</p>
+<p>synopsis: galaxy.</p>
+<p>description: a demonstration: a percolation model of a spiral galaxy.
+cells on a set of rotating rings ignite star formation in their
+neighbours a step later, and because the rings turn at different speeds
+the fronts are sheared into trailing arms. space pauses and resumes, r
+reseeds, and q or escape exits.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; galaxy
+... the arms wind up, operator watches, q exits
+&gt;
+</pre>
+<p>notes: galaxy is galaxy.play of /a/modules/demos/galaxy, bound by the
+start-up script. the picture is a display list of short strokes, one to
+a lit cell, brightest at the leading edge of a front and fading along
+its trail.</p>
+<h3>phono</h3>
+<p>name: phono.</p>
+<p>synopsis: phono 'path.</p>
+<p>description: play a recorded sound file in the echo format. phono
+decodes the file a block at a time and feeds the sound device, pacing
+itself on how much is still queued, and rewrites a position line under
+the prompt once a second. the arrow keys seek backwards and forwards;
+ctrl-q stops.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; phono '/a/music/bach/bwv639.echo
+0:12 / 3:24   arrows: seek   ctrl+q: stop
+</pre>
+<p>notes: phono is phono.play of /a/modules/sound/phono, bound by the
+start-up script. echo is a lossy format and the file's own duration is
+read from its header before playback begins, so the total shows at once.
+a seek decodes cold from the nearest sync block rather than from the
+start of the file.</p>
+<h3>play</h3>
+<p>name: play.</p>
+<p>synopsis: play 'path.</p>
+<p>description: play a tune written in the song format — a text file of
+patch declarations, phrases of note rows, and a chain naming the order
+they play in. play installs a patch on a track whenever a row calls for
+a different one, triggers the notes at the file's tempo, and stops at
+the end of the chain or on ctrl-q.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; play '/a/songs/ode_of_joy.song
+... the tune plays, ctrl+q stops
+&gt;
+</pre>
+<p>notes: play is play.play of /a/modules/sound/play, bound by the start-up
+script. a song is line-oriented text and may be written and edited with
+jot; an unknown directive is ignored rather than refused, so a file may
+carry a title or a source line. two tunes ship on the disk, in /a/songs.</p>
+<h3>jingle</h3>
+<p>name: jingle.</p>
+<p>synopsis: jingle.</p>
+<p>description: play a short phrase written to show what the synth can do:
+a filtered pulse lead, a saw bass under it, noise percussion, and a
+pitch slide on the closing note. it returns when the phrase is over.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; jingle
+</pre>
+<p>notes: jingle is jingle.play of /a/modules/sound/jingle, bound by the
+start-up script. rendering hangs off the timer tick rather than off this
+program, so the phrase keeps time even while other work is running.</p>
+<h3>compress</h3>
+<p>name: compress.</p>
+<p>synopsis: compress 'path.</p>
+<p>description: compress the named file with the lz codec, writing the
+result beside it under the same name with .lz appended. the original is
+left alone.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; compress '/a/notes/log.moff
+&gt; lsd '/a/notes
+log.moff
+log.moff.lz
+</pre>
+<p>notes: compress is lz.compress of /a/modules/compression/lz, bound by
+the start-up script. a fault part way through removes the partial output
+rather than leaving a file that is neither one thing nor the other. on
+drive b an existing .lz of the same name must be removed first.</p>
+<h3>decompress</h3>
+<p>name: decompress.</p>
+<p>synopsis: decompress 'path.</p>
+<p>description: decompress a .lz file, writing the original back beside it
+under the name with .lz removed. the .lz file is left alone.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; decompress '/a/notes/log.moff.lz
+</pre>
+<p>notes: decompress is lz.decompress of /a/modules/compression/lz, bound
+by the start-up script. a path that does not end in .lz is refused; so
+is a file whose contents are not an lz stream this version can read.</p>
+<h3>pack</h3>
+<p>name: pack.</p>
+<p>synopsis: pack 'dir.</p>
+<p>description: archive a whole directory tree into one file, named after
+the tree with .pack appended. the archive stores bytes and does not
+compress them; the same tree always gives the same archive.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; pack '/a/notes
+&gt; lsd '/a
+notes/
+notes.pack
+</pre>
+<p>notes: an archive is built from a directory in one act and is never
+edited afterwards. to compress it as well, run compress over the .pack.</p>
+<h3>unpack</h3>
+<p>name: unpack.</p>
+<p>synopsis: unpack 'path.</p>
+<p>description: restore the tree an archive carries, at the directory the
+archive is named after — dir.pack becomes dir again.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; unpack '/a/notes.pack
+</pre>
+<p>notes: unpacking destroys. what stands at the target directory is taken
+apart first, so what remains afterwards is the archive and nothing else:
+anything under that directory the archive does not name is gone. the
+archive is opened before the target is touched, so a file that is not an
+archive takes nothing with it, and a target that comes out naming a
+whole drive is refused rather than emptied.</p>
+<h3>catalog</h3>
+<p>name: catalog.</p>
+<p>synopsis: catalog 'path.</p>
+<p>description: list the tree inside an archive without unpacking it, one
+entry to a line, indented by depth, each file followed by its size.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; catalog '/a/notes.pack
+today.moff  1204
+old/
+  log.moff  8817
+</pre>
+<p>notes: nothing is written and nothing is extracted; the archive is only
+read.</p>
+<h3>udp</h3>
+<p>name: udp.</p>
+<p>synopsis: udp.echo port. udp.say &quot;host&quot;, port, &quot;message&quot;.</p>
+<p>description: the two smallest network programs there are, meant for
+finding out whether a machine's network works at all. udp.echo binds the
+given port and answers every datagram back to whoever sent it, printing
+each as it arrives; a datagram beginning with &quot;bye&quot; ends it. udp.say
+opens a socket, ships one datagram to the named address and port, and
+closes.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; udp.echo 7777
+... on the host: echo hi | nc -u 127.0.0.1 7777
+&gt; udp.say &quot;127.0.0.1&quot;, 9999, &quot;hello&quot;
+</pre>
+<p>notes: udp is imported by the start-up script but bound to no bare name,
+so it is called through the module. the address is written as a dotted
+quad in quotes and is refused if it is not one, which is what keeps a
+mistyped address from quietly naming another machine. a receive holds
+only the fiber that called it — the rest of the system runs on.</p>
+<h3>fex</h3>
+<p>name: fex.</p>
+<p>synopsis: fex.generate 'dir, 'name, 'intro. fex.identity 'root.
+fex.publish 'root. fex.inventory 'root. fex.roster 'root. fex.fetch
+'root, 'path.</p>
+<p>description: the client for fex, by which a member publishes one
+directory — a capsule — to a relay and reads it back from there a file
+at a time. generate makes the member's key pair and card; identity
+prints the fingerprint by which another member checks it; publish sends
+the capsule up; inventory lists what the relay holds, a path and a size
+to a line; roster lists who else is registered there; and fetch brings
+one named file back down.</p>
+<p>options: none.</p>
+<p>examples:</p>
+<pre>
+&gt; fex.generate '/b/fex/keys, 'alice, &quot;family photos&quot;
+&gt; fex.identity '/b/fex
+&gt; fex.publish '/b/fex
+&gt; fex.inventory '/b/fex
+&gt; fex.fetch '/b/fex, 'docs/readme.txt
+</pre>
+<p>notes: fex is imported by the start-up script but bound to no bare name,
+so it is called through the module. a member owns exactly one capsule
+and can read no one else's; every datagram is sealed under a key each
+side works out on its own from the two cards, so the relay is trusted to
+hold bytes and nothing more. a relay's own card is made with
+fex.generate_relay, which takes the address it answers on as a further
+argument. nothing in this client ever deletes anything. the machine has
+no source of randomness, so a key made here is only as unguessable as
+the moment it was made — which is the first thing to replace if these
+keys are ever to guard something that matters.</p>
 </body>
 </html>
