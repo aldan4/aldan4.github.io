@@ -40,26 +40,27 @@ bytes).</p>
 const max_items = 64
 const greeting  = &quot;hello, aldan&quot;
 const pi_third  = 1.047197551
-const u8_size   = u8           -- s64, value 1
+const b8_size   = b8           -- s64, value 1
 </pre>
 <p>a failure is a closed set of kinds you can raise. failures are
 module-local, just like types: you declare one in your module and others
-reach it qualified as `yourmod.thefault`. the standard library keeps the
-common faults in small owner modules, each declaring one failure named
-`fault` — `storage.fault`, `logic.fault`, `bytes.fault`,
-`resource.fault` (see appendix b.2 of the report) — so you import the
-owner and write `storage.fault`. declaring your own is the same shape:</p>
+reach it qualified as `yourmod.thefault`. the standard library keeps each
+common fault in the module whose operations raise it, declared as one
+failure named `fault` — `file.fault`, `heap.fault`, `bytes.fault`,
+`socket.fault`, and `boolean.fault` for contract violations (see
+appendix b.2 of the report) — so you import the owner and write
+`file.fault`. declaring your own is the same shape:</p>
 <pre>
 failure account { disk_full, no_such_user }
 </pre>
 <p>a failure can also be an alias to another, written with `as` — the
-failure twin of `type x as y`. `failure io as storage.fault` makes `io`
-a second name for `storage.fault`, the same failure under two names: you
+failure twin of `type x as y`. `failure io as file.fault` makes `io`
+a second name for `file.fault`, the same failure under two names: you
 can `raise` under one and handle `on` the other, and `io` borrows the
 target's kinds (`io.not_found`). like a type alias, it takes no `{ ...
 }` of its own.</p>
 <pre>
-failure io as storage.fault
+failure io as file.fault
 </pre>
 <p>`type` names a type. you only have to do this when the type refers to
 itself by pointer — otherwise the structure is fine inline wherever you
@@ -68,8 +69,8 @@ use it.</p>
 type byte_count as s64
 type bitset     as b64
 type id         from s64
-type buffer     [256]u8
-type lineview   []u8
+type buffer     [256]b8
+type lineview   []b8
 </pre>
 <p>an alias to another *named* type takes `as` — `type byte_count as s64`
 makes `byte_count` a second name for `s64`, fully interchangeable with
@@ -87,7 +88,7 @@ there is the cast operator.</p>
 <p>function prototypes go up here too. the bodies live below the `...`.</p>
 <pre>
 fn add s64 (a s64, b s64)
-fn fill (var buffer []u8, c u8)
+fn fill (var buffer []b8, c b8)
 fn read_line (h file.id, var line string)
 </pre>
 <p>a prototype may end with `as module.fn` to *re-export* an imported
@@ -97,7 +98,7 @@ module call it as if you wrote it. no body follows; the import supplies
 the code.</p>
 <pre>
 import 'core/file
-fn open file.id (path string) raises storage.fault as file.open
+fn open file.id (path string) raises file.fault as file.open
 </pre>
 <h2 id="3-body">3. body</h2>
 <p>everything from the `...` down is private. you can mix declarations and
@@ -114,7 +115,7 @@ alone on its own line:</p>
 when a line that imported you fails to compile.</p>
 <pre>
 fn setup () {
-  machine.patch_slot 54, tick;
+  machine.patch_slot 54, fn tick;
 }
 
 fn teardown () {
@@ -122,11 +123,24 @@ fn teardown () {
 }
 </pre>
 <p>they're not keywords and nothing declares them; they're ordinary
-functions the loader looks up by name. each one takes nothing, returns
-nothing, and raises nothing — there's no caller to hand a fault to.
+functions the loader looks up by name. each one takes nothing and
+returns nothing. teardown can't raise. setup can: if a fault leaves
+setup, the import fails just as if your module didn't compile, and your
+teardown isn't run.
 write them below the `...` unless you want them callable from outside.</p>
-<p>you probably don't need either. your module's variables are wiped for
-you when the image is. reach for them when your module puts something
+<p>setup is also where a module variable holding a slice, a pointer or an
+address gets its first value. zero isn't a valid one — a zeroed slice
+views address zero — so such a variable can't be used until setup has
+assigned it, and every function that uses it goes below setup:</p>
+<pre>
+var names []b8
+
+fn setup () {
+  names = &quot;&quot;;
+}
+</pre>
+<p>otherwise you probably don't need either. your module's variables are
+wiped for you when the image is. reach for them when your module puts something
 *outside* the image — a firmware slot, a running service, a claimed
 port — that would otherwise still be pointing at your code after it's
 gone. setup puts it there, teardown takes it back.</p>
@@ -158,11 +172,12 @@ and after a handler's failure list (`on f:`).</p>
 <pre>
 bool       1 byte
 s64        signed 64-bit integer
-u8         unsigned 8-bit integer
+b8         8-bit field of bits -- unsigned; also the byte
+b64        64-bit field of bits -- unsigned
 f64        ieee-754 double
 address    untyped 8-byte machine address
-b64        64-bit bitfield
-string     alias for []u8
+string     alias for []b8
+const []t  a view: a slice you may read but not write through
 integer    the type of an unconverted number literal
 </pre>
 <p>`true`, `false`, and `none` are the literals you have. `none` is the nil
@@ -172,7 +187,7 @@ pointer — it slots into any pointer type or into `address`.</p>
 that type.</p>
 <pre>
 fn scalar_demo ()
-    var flag bool, count s64, byte u8,
+    var flag bool, count s64, byte b8,
     ratio f64, bits b64 {
     flag  = true;
     count = -123;
@@ -213,11 +228,18 @@ returned, or taken. so a local always owns, which is why returning a
 local is always fine. to walk a borrowed list, use `for with` (it
 reborrows, never moves); to keep a pointer, receive it `from`.
 (`address` is exempt — it's a plain value at the trusted boundary.)</p>
+<p>and since a borrow never outlives its call or block, the compiler can
+also promise one mutable path per place without a borrow checker. a call
+may not get the same place twice when it can write one of them (`swap
+var a[i], var a[j]` is refused — `i` might equal `j`; `swap var a[0],
+var a[1]` is fine), and while a `with` or `for with` alias is live, its
+place is reached only through the alias: after `with p = a[0];`, touching
+`a[0]` — or `a`, or `a[i]` — is an error until the block closes.</p>
 <pre>
 type node record { next ^node|none, value s64 }
 
 fn insert ^node|none (from head ^node|none, v s64)
-    raises resource.fault var n ^node {
+    raises heap.fault var n ^node {
     n = heap.claim node;
     n^.value = v;
     n^.next = head;              -- move: `head` is consumed into the list
@@ -249,8 +271,8 @@ is a compile error. a disposer that owns a resource just forwards it on:
 pair, 16 bytes, 8-byte aligned. an array becomes a slice wherever a
 slice is expected; no cast needed.</p>
 <p>`a[lo:hi]` slices a range. the storage is shared — the slice is a view,
-not a copy. on a `b64` the same syntax pulls out the bits in positions
-lo..hi-1.</p>
+not a copy. on a bit type — `b8` or `b64` — the same syntax pulls out
+the bits in positions lo..hi-1.</p>
 <p>assigning slices copies the (data, length) pair, not the elements.</p>
 <pre>
 fn slice_demo ()
@@ -263,7 +285,7 @@ fn slice_demo ()
 }
 </pre>
 <h2 id="8-enums-and-tagged-unions">8. enums and tagged unions</h2>
-<p>an enum is a list of named tags. it's `u8`-sized, and distinct from
+<p>an enum is a list of named tags. it's `b8`-sized, and distinct from
 every other enum — you can't accidentally mix them.</p>
 <p>a tagged union is the same idea with a payload per variant: tag at
 offset 0, payload area after, sized to the biggest variant. each variant
@@ -303,6 +325,23 @@ would be null. use `^t|none` and `guard`.</p>
 var instances s64
 var palette   [3]colour
 </pre>
+<p>a value you compute once and never change is a `final`. declare it
+exactly like a `var` — at module scope, or among a function's locals,
+mixed with `var` clauses as you like — and give it its value with an
+ordinary assignment. that first assignment is the only one: before it
+the name can't be read, after it the name can't be written.</p>
+<pre>
+fn border s64 (w s64, h s64) final inner s64, var edge s64 {
+  inner = (w - 2) * (h - 2);   -- the one write
+  edge = w * h - inner;
+  return edge;
+}
+</pre>
+<p>a module `final` gets its value in `setup`. a record or array has no
+value to assign, so it gets its value from a call that builds it,
+`make into p;`. a `final` slice stays a slice: you can't point it
+somewhere else, but you can still write through it. if you want the
+bytes read-only too, say so in the type: `final name const string`.</p>
 <h2 id="10-functions">10. functions</h2>
 <p>a function is `[inline] fn name signature [var locals] body`. the
 signature is an optional return type, the parameter list in parens, and
@@ -356,7 +395,7 @@ call site marks that argument `into`.</p>
 <p>scalars pass by value, aggregates always pass by reference — the marker
 is about *writability*, not how things get there.</p>
 <pre>
-fn fill (var buffer []u8, c u8)
+fn fill (var buffer []b8, c b8)
     var i s64 {
     i = 0; for i != length buffer; i += 1 {
         buffer[i] = c;
@@ -364,10 +403,35 @@ fn fill (var buffer []u8, c u8)
 }
 
 fn fill_caller ()
-    var page [256]u8 {
+    var page [256]b8 {
     fill var page, 0x20;      -- `var` at the call site too
 }
 </pre>
+<p>a slice local, like a pointer, has to be assigned before you use it: a
+zeroed slice views address zero, so the compiler refuses to let you
+read it, index it or pass it `var` until something has been stored. an
+empty one is just `&quot;&quot;`. a callee that only fills a slice takes it
+`into`, which counts as the assignment:</p>
+<pre>
+fn first_word (s string, into w const string)
+    var n s64 {
+    n = 0; for and (n &lt; (length s)), (s[n] != ' '); n += 1 { }
+    w = s[0:n];
+}
+
+fn caller ()
+    var w const string {
+    first_word &quot;hello world&quot;, into w;   -- w is born here
+    tty.say w;
+}
+</pre>
+<p>`w` is a `const string` because what it holds is part of `s`, and a
+plain parameter like `s` is a view: the function may read it but not
+write through it, keep it writable, or hand it back writable. a string
+literal is a view too, and so is every constant, which is why
+`&quot;hello world&quot;` can be passed here at all. a slice you mean to write
+through — a buffer you fill — is passed `var`, as `fill` takes its
+page above.</p>
 <h3>10.2 returning aggregates</h3>
 <p>a function can't return an aggregate (array, record, slice, or tagged
 union) by value. when you need one out, pass it as an out parameter
@@ -449,6 +513,7 @@ and b0, b1, ...     or b0, b1, ...     not b
 <li>`+=` and `-=` are scalars only.</li>
 <li>aggregates aren't assignable as a whole — update field by field.</li>
 <li>args can carry postfixes (index, field, deref) directly; nested calls and binary operators need parens: `f (a + b)`, `f (g x)`.</li>
+<li>a bare function name is a zero-arg call, everywhere: `t = clock.now`. to pass or store the function itself, mark it `fn`: `tty.to fn collect`, `h = fn hooks[i]`.</li>
 </ul>
 <pre>
 fn expr_demo s64 (x s64, y s64)
@@ -480,25 +545,40 @@ scalar   -&gt; bool          (non-zero is true)
 pointer &lt;-&gt; address
 distinct &lt;-&gt; its base     (type x from y, 6 -- and between two such)
 </pre>
-<p>widening from `s64` sign-extends; widening from `u8` zero-extends.
-narrowing to `u8` keeps the low 8 bits.</p>
+<p>widening from `s64` sign-extends; widening from `b8` zero-extends.
+narrowing to `b8` keeps the low 8 bits.</p>
 <pre>
 fn cast_demo ()
-    var c u8, n s64, x f64, flag bool {
+    var c b8, n s64, x f64, flag bool {
     c = 200;
     n = c as s64;          -- zero-extended
     x = n as f64;
     flag = c as bool;      -- non-zero -&gt; true
 }
 </pre>
-<h3>11.3 bitfields</h3>
-<p>`b64` supports two postfix forms — `b[i]` for a single bit (yields
-`bool`) and `b[i:j]` for a range of bits (yields a `b64`). the `bit`
-module has the rest: `shil`, `shir`, `incl`, `excl`.</p>
+<h3>11.3 bit fields</h3>
+<p>the two bit types, `b8` and `b64`, support two postfix forms — `b[i]`
+for a single bit (yields `bool`) and `b[i:j]` for a range of bits
+(yields the operand's own type). both are places, so either can be
+assigned to, and the store leaves the surrounding bits alone. bitwise
+and and or are the integer forms of `and` and `or`; the `bit` module has
+the rest: `shil`, `shir`, `xor`, `clz`, `ctz`, `ones`.</p>
 <pre>
 fn bitfield_demo b64 (b b64) {
   if b[7] { return b[0:8]; }   -- low byte
   return 0;
+}
+
+fn nibbles (v b8) {
+  tty.say &quot;low: &quot;, (v[0:4]), &quot; high: &quot;, (v[4:8]);
+}
+
+-- pack two fields into one word, then replace just one of them
+fn repack b64 (size s64, shift s64) var x b64 {
+  x[0:40] = size as b64;
+  x[40:45] = shift as b64;
+  x[0:40] = 0 as b64;          -- shift survives
+  return x;
 }
 </pre>
 <h2 id="12-statements">12. statements</h2>
@@ -544,10 +624,10 @@ fn sum s64 (head ^node|none) var total s64 {
 <h3>12.2 defer</h3>
 <p>`defer expr` schedules `expr` to run when the function returns —
 whether normally or via a failure. defers run in reverse order, last
-registered first. up to eight per function. if the deferred expression
-is a function value, it's auto-called with no args.</p>
+registered first. up to eight per function. like any bare function name,
+a deferred `defer note` calls note with no args.</p>
 <pre>
-fn open_and_print (path string) raises storage.fault
+fn open_and_print (path string) raises file.fault
     var h file.id {
     h = file.open path;
     defer file.close h;
@@ -581,33 +661,37 @@ kind), and one handler may name several targets separated by `|` (`on f</p>
 <p>handler's stmts and the body. completing a handler converts the failure
 into a normal return.</p>
 <pre>
-fn parse_or_zero u8 (s string)
-    var v u8 {
+fn parse_or_zero b8 (s string)
+    var v b8 {
     v = byte.parse s;
     return v;
 on bytes.fault:
     return 0;
 }
 
-fn save_user (name string) raises logic.fault | account {
-    if length name == 0 { raise logic.fault.invalid_argument; }
+fn save_user (name string) raises boolean.fault | account {
+    if length name == 0 { raise boolean.fault.invalid_argument; }
     if instances &gt;= max_items { raise account.disk_full; }
     instances += 1;
 }
 </pre>
 <p>`parse_or_zero` needs no `raises`: `byte.parse` can raise `bytes.fault`,
 but the `on bytes.fault` handler discharges it. `save_user` declares the
-failures it lets escape — the library's `logic.fault` (from
-`core/logic`) and your own `account`. a failure name in
-`raise`/`raises`/`on` may carry a module qualifier (`logic.fault`) or be
+failures it lets escape — the library's `boolean.fault` (from
+`core/boolean`) and your own `account`. a failure name in
+`raise`/`raises`/`on` may carry a module qualifier (`boolean.fault`) or be
 bare when it is your own module's failure, exactly like a type name.</p>
 <h2 id="13-things-you-don-t-have-to-import">13. things you don't have to import</h2>
 <p>the built-in vocabulary is small. these four forms, and the primitive
 type names, are the only things in scope without an import:</p>
 <pre>
 length x            element count of an array or slice
-and / or / not      short-circuit logical ops
+and / or / not      logical over bool, bitwise over integers
 </pre>
+<p>`and` and `or` short-circuit over `bool` and don't over integers (there
+is nothing to skip — every argument is needed for the result). `not` is
+logical negation over `bool` and the bitwise complement over an integer,
+within that integer's own width.</p>
 <p>everything else that used to be a compiler builtin is now an ordinary
 standard-library module written in almac — you import it and qualify
 its members. printing is the one that catches people out: `say`,
@@ -620,8 +704,8 @@ defines them in rc.alm over the file and directory modules.</p>
 <pre>
 import 'core/tty, 'core/heap
 
-fn predef_demo () raises resource.fault
-    var buffer address, reply [64]u8 {
+fn predef_demo () raises heap.fault
+    var buffer address, reply [64]b8 {
     buffer = heap.claim 1024;
     defer heap.release from buffer;
     tty.say &quot;hello,&quot;, (length &quot;hello,&quot;), &quot; bytes long&quot;;
@@ -644,12 +728,12 @@ bytes      operations on byte slices -- clear, fill, copy, move,
 bit        b64 shift, xor, and bit/range include/exclude
 signed     s64 arithmetic, conversion, limits
 float      f64 arithmetic, trig/log/exp, constants
-boolean    parse / format for bool, and []bool fills
-heap       claim / release memory; query bytes available
+boolean    parse / format for bool, and []bool fills; boolean.fault
+heap       claim / release memory; query bytes available; heap.fault
 random     splitmix64 prng
 clock      monotonic timing
 time       wall clock and calendar decomposition
-file       open, read, write, seek, close, etc.
+file       open, read, write, seek, close, etc.; file.fault
 directory  make, remove, iterate, query
 tty        console output and input -- say / sayin / ask
 text       formattable union; format values into a buffer
@@ -657,14 +741,11 @@ debug      trace one diagnostic line to the tracer device
 screen     off-screen text canvas + keyboard
 sound      pcm audio playback
 task       cooperative yield
-storage    the storage.fault failure (files / directories)
-logic      the logic.fault failure (contract violations)
-resource   the resource.fault failure (out of memory)
 bytes      also owns bytes.fault (parse / format errors)
 </pre>
 <p>read a whole file into a buffer:</p>
 <pre>
-fn read_all (path string, var dst string) raises storage.fault | bytes.fault
+fn read_all (path string, var dst string) raises file.fault | bytes.fault
     var h file.id, size s64 {
     size = file.size path;
     if size &gt; length dst { raise bytes.fault.buffer_overflow; }
@@ -693,7 +774,7 @@ read; neither it nor `tty.say` raises, so `run` needs no `raises`:</p>
 import 'core/tty
 
 fn run ()
-    var name [64]u8, line string {
+    var name [64]b8, line string {
     for {
         line = tty.ask &quot;name? &quot;, var name;
         if length line == 0 { break; }
