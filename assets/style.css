@@ -16,6 +16,10 @@ pre, code, kbd, samp {
 a {
     color: #ff8c1a;
 }
+img {
+    max-width: 100%;
+    height: auto;
+}
 img.thumb {
     width: 120px;
     height: auto;
