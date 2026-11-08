@@ -84,14 +84,21 @@ ctrl+. and ctrl+, go to the pane to the right and to the left.</p>
       var total = Number(response.headers.get('content-length')) || 0;
       if (!response.body || !total) return response.arrayBuffer().then(function (b) { return new Uint8Array(b); });
       var reader = response.body.getReader();
-      var bytes = new Uint8Array(total);
+      var chunks = [];
       var got = 0;
+      // content-length is the encoded size when the server compresses, so it
+      // only drives the progress count; the bytes are gathered as they come.
       function pump() {
         return reader.read().then(function (step) {
-          if (step.done) return bytes.subarray(0, got);
-          bytes.set(step.value, got);
+          if (step.done) {
+            var bytes = new Uint8Array(got);
+            var at = 0;
+            chunks.forEach(function (c) { bytes.set(c, at); at += c.length; });
+            return bytes;
+          }
+          chunks.push(step.value);
           got += step.value.length;
-          say('loading disk ' + Math.floor(got * 100 / total) + '%');
+          say('loading disk ' + Math.min(100, Math.floor(got * 100 / total)) + '%');
           return pump();
         });
       }
