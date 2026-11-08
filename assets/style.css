@@ -20,10 +20,30 @@ img {
     max-width: 100%;
     height: auto;
 }
+blockquote {
+    font-style: italic;
+}
+blockquote.epigraph {
+    margin: 0 0 0 40%;
+}
+blockquote + address {
+    font-style: italic;
+    text-align: right;
+    margin: 0 40px 1.5em 0;
+}
+blockquote + address::before {
+    content: "— ";
+}
+blockquote.epigraph + address {
+    margin-right: 0;
+}
 img.thumb {
     width: 120px;
     height: auto;
     vertical-align: middle;
     margin-right: 0.6em;
     border: 1px solid #ff8c1a;
+}
+li.open {
+  list-style-type: circle;
 }

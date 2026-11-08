@@ -1,1930 +1,537 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
-<title>almac language report</title>
+<title>Almac language report</title>
+<meta name="author" content="ortfero">
 <meta name="year" content="2026">
 <link rel="stylesheet" href="../assets/style.css">
 </head>
 <body>
-<h1>almac language report</h1>
-<p class="subtitle">ortfero</p>
-<h2 id="1-introduction">1. introduction</h2>
-<p>almac (algorithmic language for machine computation) is a small
-imperative programming language for the aldan system. it emphasises a
-small grammar, explicit memory layout, value semantics for aggregates,
-and explicit propagation of failures.</p>
-<p>the compilation unit is the module: a sequence of declarations followed
-by an optional body section (see 11). every module begins with a small
-fixed vocabulary built into the compiler: the primitive types and four
-predefined forms (length, and, or, not), listed in 10.5. everything else
-— the failures and the standard library — is itself written in almac,
-supplied as ordinary modules under core/ in the source tree and gained
-by importing them (11.2). the predefined forms appear in 10.5; the
-built-in types and standard modules (the failures among them) in
-appendix b.</p>
-<p>this report is a concise reference for programmers and implementors.
-what is left unsaid is either derivable from the stated rules or
-deliberately left to the implementation.</p>
-<h2 id="2-syntax">2. syntax</h2>
-<p>the syntax is given in an extended backus-naur form. a production has
-the form</p>
-<pre>
-production = expression .
-</pre>
-<p>the meta-symbols are</p>
+<h1>Almac language report</h1>
+<address>ortfero</address>
+<p>Almac is a small imperative language for the aldan system.
+This report states the rules needed to implement its compiler;
+the standard library is written in almac and documented in its
+own modules.</p>
+<h2 id="1-lexical-rules">1. Lexical rules</h2>
 <ul>
-<li>= defines a production</li>
-<li>| alternative</li>
-<li>( ) grouping</li>
-<li>[ ] zero or one occurrence</li>
-<li>{ } zero or more occurrences</li>
-<li>&quot;x&quot; the terminal symbol x</li>
+<li>Tokens are separated by blanks, line breaks, comments.</li>
+<li>Letters are a..z and _ only; hex digits are lowercase.</li>
+<li>Reserved words (31):</li>
 </ul>
-<p>lower-case identifiers denote non-terminals; terminals are quoted
-literals or the token names of section 3. the complete grammar is
-collected in appendix a.</p>
-<h2 id="3-vocabulary">3. vocabulary</h2>
-<p>a token is a keyword, an identifier, a number, a character, a string, an
-operator, or a delimiter. tokens are separated by blanks, line breaks,
-and comments. a comment begins with the digraph — and extends to the
-end of the line.</p>
-<p>an identifier is a letter followed by letters and digits. letters are
-the lower-case latin letters; the underscore counts as a letter.</p>
 <pre>
-ident = letter { letter | digit } .
+affine    as        asm       break     const
+continue  defer     else      enum      failure
+false     final     fn        for       from
+guard     if        import    inline    into
+mod       none      on        raise     record
+return    true      union     var       when
+with
 </pre>
-<p>the following 32 words are reserved and may not be used as identifiers:</p>
-<pre>
-as      asm      break      const           continue   defer
-else    enum     failure    false           final      fn
-for     from     guard      if              import     inline
-into    mod      none       on              raise      raises
-record  return   true       type            union      var
-when    with
-</pre>
-<p>a number is an integer, a hexadecimal, or a floating-point literal. in
-the optional exponent of a floating-point literal the letter e is read
-&quot;times ten to the power of&quot;. the two integer notations differ only in
-how they read: both have type integer (6.1) and adopt the type they
-meet, so a hexadecimal may initialise an s64 as readily as a b64. the
-notation is a note to the reader about what the number is — a quantity
-in decimal, a bit pattern in hexadecimal — and the type says the rest.</p>
-<pre>
-integer = digit { digit } .
-hex     = &quot;0&quot; &quot;x&quot; hexdigit { hexdigit } .
-fp      = digit { digit } &quot;.&quot; digit { digit }
-          [ &quot;e&quot; [ &quot;+&quot; | &quot;-&quot; ] digit { digit } ] .
-</pre>
-<p>a character literal is a single byte in apostrophes and has type b8. a
-string literal is a byte sequence in quotation marks; it cannot contain
-the delimiting quotation mark. its bytes are shared by every run of the
-code that names it, so a literal of at least one byte has type
-const string, a view (6.2); the empty literal &quot;&quot; has none to share and
-has type string, which is what lets it birth a writable slice (7). a short-string
-literal abbreviates a string without whitespace: a leading apostrophe
-followed by the content, with no closing apostrophe. the content ends at
-the first whitespace character or at one of the closing tokens , ) ] } .
-the characters ' &quot; ` ( [ { inside a short-string are errors; the verbose
-&quot;...&quot; form must be used instead. examples:</p>
-<pre>
-'hello
-'out/build.alm
-'http://x.io:8080/q
-</pre>
-<p>character and short-string literals are distinguished by the byte after
-the content: 'x' is the character x; 'xy is the short-string &quot;xy&quot;.</p>
-<p>the boolean literals are true and false. the literal none denotes the
-absent value of an optional pointer; it converts implicitly to optional
-pointer types only (see 6.4, 8.2.5), and serves as the return value of
-no-result functions (see 9.7).</p>
-<p>the operators and delimiters are</p>
-<pre>
-=  ==  !=  &lt;  &lt;=  &gt;  &gt;=  +  -  *  /  +=  -=
-^  |  .  ...  ,  ;  :  (  )  [  ]  {  }
-</pre>
-<p>the roles of ^ (pointer / dereference), | (variant separator, guard
-escape mark), * (multiplication, when-case bullet), and ... (variadic
-parameter marker inside a parameter list, the unnamed failure inside a
-raises clause and as a handler's target, deferred-definition marker
-after a signature, and the module interface/body separator) are defined
-with the constructs that use them (6.4, 6.5, 8.2.2, 9.4, 9.5, 9.9,
-9.10, 10.1, 10.3, 11.1). the parameter-kind markers var and into are
-reserved words, not operators, defined in 10.1. the three-dot ... is
-read greedily, distinct from the field selector . (6, 8.1). statement
-punctuation is defined in 9.</p>
-<p>a minus sign immediately followed by a digit begins a negative number
-literal; followed by another minus sign it begins a comment; otherwise
-it denotes subtraction or negation. the expression x-5 must therefore be
-written with a blank: x - 5.</p>
-<h2 id="4-declarations-and-scope-rules">4. declarations and scope rules</h2>
-<p>every identifier must be declared before use. top-level declarations are
-visible throughout the module; those preceding the ... separator are
-also exported (see 11.1). the body of a function opens a scope; a nested
-scope may redefine an outer name for the remainder of the body.</p>
-<pre>
-declaration = functionproto | typedecl | vardecl | constdecl
-            | failuredecl .
-</pre>
-<p>a function prototype is a name and a signature without a body; its
-relation to a later definition is described in 10.3. a signature may
-instead carry an as suffix naming an existing function — a function
-alias (10.3), which in the interface section re-exports an imported
-function under this module's name (11.1).</p>
-<h2 id="5-constant-declarations">5. constant declarations</h2>
-<p>a constant declaration binds a name to a compile-time value. a type may
-stand between the name and the =, written exactly as a variable's is;
-without one the literal's own kind decides.</p>
-<pre>
-constdecl   = &quot;const&quot; ( ident [ type ] | ident &quot;.&quot; ident ) &quot;=&quot; constexpr .
-constexpr   = &quot;true&quot; | &quot;false&quot; | &quot;none&quot;
-            | integer | hex | fp | character | string
-            | qualident [ &quot;.&quot; ident ]
-            | &quot;fn&quot; qualident
-            | arrayconst
-            | recordconst .
-arrayconst  = &quot;[&quot; constexpr { &quot;,&quot; constexpr } [ &quot;,&quot; ] &quot;]&quot; .
-recordconst = &quot;{&quot; constexpr { &quot;,&quot; constexpr } [ &quot;,&quot; ] &quot;}&quot; .
-</pre>
-<p>if the right-hand side is a type identifier, the constant is the size of
-that type in bytes, of type s64; if it is an enumeration's variant,
-color.red, the constant is that value, of the enumeration's type; if it
-is a scoped constant of a distinct type, opcode.add (5.3), the same. if it
-is another constant, the new constant receives its value and type. a written type must admit the
-value — an untyped integer literal, decimal or hex, fits any integer
-type — and a value that would not survive the width it is given, such
-as 300 in a b8, is rejected rather than truncated.</p>
-<pre>
-const limit = 100
-const origin = none
-const node_size = node       -- size of type node in bytes
-const mask b64 = 0xff
-const first = color.red      -- of type color
-</pre>
-<p>a constant names no expression: there is no arithmetic on the right of
-the =. a value that needs one is written as a function.</p>
-<p>two forms have no type of their own and so appear only where one is
-written — as a field of a record constant (5.2) or an element of an
-array constant whose slice type is declared: a record written in place,
-and fn d, the address of the function d (the function value of 9.2).
-d must already have its final address: a function of an imported
-module, or of an earlier unit at the prompt. a function of the module
-being compiled does not yet have one, and nothing patches a constant
-afterwards, so it is refused; so is an inline function (10.2), which has
-no entry to point at. fn d alone is not a constant — a function's
-second name is written as an alias (10.3).</p>
-<h3>5.1 array constants</h3>
-<p>an array constant is a bracketed list of constants, laid out
-contiguously in the image. the name is bound to the slice over those
-elements, never to an array, so a constant table indexes, sub-slices,
-aliases with with, and passes wherever a []t is wanted. a string
-constant is this form's []b8 case, written with quotes instead of
-brackets.</p>
-<pre>
-const inc_tab = [22861, 21578, 20367]   -- const []s64
-const sbox    = [0x0f, 0x1e, 0x2d]      -- const []s64: a hex literal is untyped
-const keys []b8 = [1, 2, 3]             -- const []b8
-const gains []f64 = [0.5, 0.25]         -- const []f64
-const name = &quot;aldan&quot;                    -- const string, the string case
-const words []string = [&quot;one&quot;, &quot;two&quot;]   -- const []string
-</pre>
-<p>the element type is the element type of the declared slice type when one
-is written, and otherwise the type of the first element, with an untyped
-integer settling on s64 as it does everywhere else (8.2.5). every element
-must then fit that type. a declared array type [n]t is not a slice type
-and is rejected: an array constant is always a slice.</p>
-<p>an element is a scalar constant — a boolean, an integer, a floating
-point number, a character, an enumeration's variant, or a name for one
-— a slice constant — a string written in place, or a name for a string
-or an array constant — or a record constant (5.2), written in place or
-named. where the slice type is declared, an element may also be a
-function value, fn d (5). a table of strings is the form a list of names
-takes, and it is written where the list belongs rather than parsed out
-of one long string at runtime. what such a table holds is the slices
-themselves; the bytes each of them reaches live in the image beside it.</p>
-<p>a nested list and none are not elements, and the list may not be empty.
-none has no element type; a nested list is refused because an element
-that is a slice is a constant that already exists rather than one
-written in place, so a table of tables is spelled by naming them
-(const t = [a, b]). a record element is different: the table holds the
-record's bytes, not a reference to them, so a row is laid down where it
-stands and may be written in place. an array is never an element. there
-are still no aggregate values, only aggregate places (9.1): a table of
-records is a place whose rows are places, selected from and never copied
-whole.</p>
-<p>the elements live in the image, so an array constant is a read-only
-place, and its type is the view of the slice type, const []t, whatever
-slice type is written (6.2). it may be indexed and sub-sliced, but never
-written through, and it may not be passed to a variable (var) or out
-(into) parameter; nor may it be assigned to a []t, only to a const []t.</p>
-<pre>
-const t = [1, 2, 3]
-t[0]                -- 1
-t[1:3]              -- a const []s64 of two elements
-t[0] = 9            -- rejected: read-only
-
-const a = [1, 2]
-const b = [3]
-const nest = [a, b] -- []([]s64), by naming the inner tables
-nest[0][1]          -- 2
-const bad = [[1]]   -- rejected: a nested list is not an element
-</pre>
-<h3>5.2 record constants</h3>
-<p>a record constant is a record laid down in the image at compile time.
-its type is written on the declaration, and the values follow in braces,
-one for each field in the order the fields are declared; every field is
-given, and a trailing comma is permitted. a field's value is any
-constant its type admits: a scalar, an enumeration's variant, none for
-an optional pointer, a string or a slice constant for a slice field, fn d
-for a function field (5), and for a record field a record written in
-place or a named record constant. a field no constant can fill — a
-non-null pointer, an address, an array, a union — makes a type that has
-no constants.</p>
-<pre>
-type point record { x s64, y s64 }
-type row record { name string, code b8, run fn s64 () }
-
-const origin point = {0, 0}
-const corner point = origin            -- the same record, not a copy
-const table []row = [
-  {&quot;add&quot;, 1, fn ops.add},
-  {&quot;sub&quot;, 2, fn ops.sub},
-]
-</pre>
-<p>like an array constant, a record constant is a read-only place rather
-than a value, and a slice read out of it is a view (6.2) whatever its
-field's type. its fields are selected and read, it may be aliased with
-with, and it is passed by reference wherever a bare record parameter is
-wanted; it may not be written through, passed to a var or out parameter,
-or copied whole (9.1). what a record constant replaces is the run of
-field assignments that would otherwise build the same record in setup,
-and the parallel tables, read in step by one index, that stand in for a
-table of records.</p>
-<pre>
-origin.x            -- 0
-table[1].code       -- 2
-origin.x = 1        -- rejected: read-only
-var p point
-p = origin          -- rejected: a record is not assignable whole
-</pre>
-<h3>5.3 scoped constants</h3>
-<p>a distinct type (6) has a namespace of its own, as an enumeration does:
-const t.name = v declares a constant in it. the qualifier is the type,
-so no type is written after the name; the value must be admitted by t
-as for any typed constant. the constant is read as t.name, or m.t.name
-from an importer, wherever an enumeration's variant is — an operand, a
-constant, a when label (9.4) — and it has type t, not t's base.</p>
-<pre>
-type opcode from b8
-const opcode.add = 0x33
-const opcode.sub = 0x3b
-
-type perm from b64
-const perm.read  = 0x1
-const perm.write = 0x2
-
-or perm.read, perm.write     -- a perm
-m.opcode.add                 -- from an importer, no alias needed
-</pre>
-<p>only a distinct type takes scoped constants: an enumeration's and a
-union's namespaces are their variants', and a record, a transparent
-alias's target, a built-in or a structural type has none. the
-declaration must stand in the type's own module and name the type by
-its own name, so neither an importer nor an alias declares into it.
-reading goes through any name of the type: an alias, type op as m.t,
-reaches m.t's constants as op.name. a constant declared in the
-interface section is public; one in the body is the module's own.</p>
-<p>the namespace is the type's alone. type b from a takes none of a's
-constants, being a type of its own, and a name in t's namespace never
-falls back to t's base or to a constant of the module.</p>
-<h2 id="6-type-declarations">6. type declarations</h2>
-<p>a type declaration binds a name to a type. a named type may refer to
-itself only through a pointer.</p>
-<pre>
-typedecl  = &quot;type&quot; ident ( &quot;as&quot; typename | &quot;from&quot; typename | structtype ) .
-type      = [ &quot;const&quot; ] ( typename | structtype ) .
-structtype = &quot;^&quot; type [ &quot;|&quot; &quot;none&quot; ]
-          | &quot;[&quot; [ constexpr ] &quot;]&quot; type
-          | recordtype
-          | enumtype
-          | uniontype
-          | functiontype .
-typename  = qualident [ &quot;.&quot; ident ] .
-</pre>
-<p>a type declaration names another type through as or from. type
-byte_count as s64 is a transparent alias: it introduces no type of its
-own, binding the name to the target instead, so byte_count and s64 are
-one type rather than two that agree (and where the target is itself a
-distinct type, the alias names that same distinct type). type id from
-s64 is a distinct nominal type: it shares s64's representation but is a
-type of its own, compatible only with itself — an id neither combines
-with an s64 nor with another distinct type over s64, and crossing to or
-from the base takes an explicit as cast (8.2.5). the distinctness is
-nominal, like an enumeration's (6.5): two separate from declarations
-over the same base are unrelated types, and each has its own namespace
-of scoped constants (5.3). an integer literal still coerces
-to a distinct type over an integer base (var x id; x = 0), and an
-operator on two values of one distinct type yields that same type. a
-bare typename with neither marker (type id s64) is rejected as a typo
-guard. a structural right-hand side — a pointer, array, slice, record,
-enum, union, or function type — carries no marker. from targeting a
-union-variant subtype is rejected (use as). the marker is confined to
-the declaration: in every other type position (a variable, parameter,
-field, array element, or pointer base) a named type is still written
-bare, and as there is the cast operator (8.2.5).</p>
-<p>because an alias binds through, its interchangeability is total rather
-than a matter of what a comparison of types will accept: an alias
-reaches everywhere its target does, including the positions that read a
-type's structure rather than its identity. type name as string is a
-string wherever one is written — indexed, sliced, passed and laid out
-as one — and an alias of a named record or array is likewise that
-record or array. two aliases of one target are the same type. from is
-the opposite in each of these: it does introduce a type, which is what
-it is for.</p>
-<p>a typename is a qualified name with an optional trailing variant
-selector: a bare ident names a type in scope, m.t names a type exported
-by module m, and the trailing ident in u.v or m.u.v names a variant
-subtype of the union u (see 6.5).</p>
-<h3>6.1 basic types</h3>
 <ul>
-<li>bool — logical, 1 byte</li>
-<li>s64 — signed 64-bit integer</li>
-<li>b8 — 8-bit bit field</li>
-<li>b64 — 64-bit bit field</li>
-<li>f64 — ieee-754 double-precision float</li>
-<li>address — untyped machine address; non-null, like a pointer (6.4): zero is not a value of the type, so it shares the pointer's zeroed-storage bans (7) and the birth rule for bare locals (7)</li>
-<li>string — alias for [ ] b8</li>
-<li>integer — the type of an unconverted integer literal; it coerces to any other integer type where one is required</li>
+<li>A reserved word where a name goes is an error of its own (reserved word).</li>
+<li>naked is contextual: a keyword only directly after asm.</li>
+<li>const only marks a view slice type (4.2). Constant and type declarations take no keyword (3, 4); type is an ordinary name. A failure's name comes before failure (7.9), a function's before fn (8).</li>
+<li>... is lexed greedily, distinct from the selector . .</li>
+<li>! alone opens a failure clause (4.6); != is one token.</li>
+<li>A minus followed by a digit starts a negative literal, followed by another minus a comment, followed by &gt; the arrow before a result type (4.6), otherwise it is subtraction or negation: write x - 5, not x-5.</li>
+<li>integer and hex literals both have type integer; the notation carries no type.</li>
+<li>'x' is a byte character. 'xy (no closing apostrophe) is a short-string, ending at whitespace or at a closer (comma, ), ], }). The bytes ' &quot; ` ( [ { inside it are errors. The byte after the content decides: 'x' vs 'xy.</li>
+<li>&quot;...&quot; strings have no escapes and cannot hold &quot;. A nonempty literal is const string (a view); &quot;&quot; is string (writable, can birth a slice).</li>
+<li>none converts only to optional pointers; it is also the return value of a no-result function.</li>
 </ul>
-<p>there are two integer families, and the letter says which. s64 is a
-number: it is signed, and it is the type a count, an index, or an offset
-should have. bn is a field of n bits: it is unsigned, so its ordering,
-its division and its mod read the whole width as a magnitude, and it
-indexes its own bits (8.2.3). b8 is also the byte, so string is [ ] b8.</p>
-<p>the language has no un-prefixed unsigned type. what c would spell
-unsigned long is b64, and the naming makes the choice at each
-declaration an explicit one: a value is a number or it is bits.</p>
-<p>bool and b8 occupy 1 byte; s64, f64, address, and b64 occupy 8 bytes and
-are aligned to 8.</p>
-<h3>6.2 array and slice types</h3>
-<p>an array is a fixed-length sequence of elements of one type; a slice is
-a fat pointer — a data address and an element count — referring to
-such a sequence.</p>
-<pre>
-arraytype = &quot;[&quot; constexpr &quot;]&quot; type .
-slicetype = &quot;[&quot; &quot;]&quot; type .
-</pre>
-<p>the array length is a positive s64 constant. elements are contiguous;
-the array's alignment is that of its element type. a slice occupies 16
-bytes, aligned to 8. an array converts implicitly to a slice of the same
-element type wherever a slice is required — in assignment, in an
-argument position, or under an explicit as.</p>
-<p>a slice may be a view. const []t — const string for const []b8 —
-is the slice type that may not be written through: an element of it is
-a read-only place, a subrange of it is a view, and a slice read out of
-it is a view in turn, so const []string is const []const string. a
-const prefix applies to a slice type and to nothing else. a []t
-converts implicitly to const []t wherever a slice is required; no
-conversion, implicit or written, goes the other way, and an as cast of
-a view to a slice type yields the view of that type (8.2.5).</p>
-<p>what is a view is what may not be written: a constant (5) and a
-nonempty string literal (3); a plain parameter, inside its function
-(10.1); and anything read out of a read-only place — a constant, a
-plain parameter, a with alias of one (9.10), an element of a view. a
-slice made over a read-only place — a subrange of a read-only array,
-the array-&gt;slice conversion of one, a byte view — is a view too. so a
-view's bytes are written by no one: it cannot be stored in a []t
-binding, field or module variable, returned as a []t, or passed to a
-var or out parameter of type []t. a binding, field, result or var
-parameter that holds a view is declared const []t.</p>
-<pre>
-fn base_name const string (p string) { return p[1:(length p)]; }
-var b [8]b8, s const []b8, w []b8
-s = &quot;ab&quot;;             -- a literal is a view
-s = b[0:2];           -- a []b8 converts to its view
-w = s;                -- rejected: a view is not writable
-s[0] = 'x';           -- rejected: read-only
-</pre>
-<p>a constant table is written as an array constant (5.1). it is a
-read-only slice over elements laid out in the image, not an array, and
-it is the only way to give a sequence its contents at compile time, as a
-record constant (5.2) is for a record: a variable, module-scope or
-local, is always zero-initialised (7).</p>
-<p>an element type may never be non-null — a non-null pointer or an
-address — since per-element initialisation is unverifiable. arrays of
-pointers are declared optional (^t|none) and narrowed at use (see 6.4,
-9.5); tables of raw addresses are kept as s64 and forged at use (9.3).</p>
-<p>a slice is not an owner and carries no alias taint: it is an address and
-a count, and it copies freely. one rule governs it — the frame rule. a
-slice taken over a local array views the activation frame, which is gone
-once the function returns, so such a slice may not escape: it may not be
-returned, nor stored in a module variable, in a var or out parameter, or
-in any field reached through a pointer. it may be read, indexed, passed
-as an argument (a callee cannot outlive the call), and stored in another
-place that dies with the same frame — another local, or a field of a
-local record. the taint follows the view: a subrange of a frame slice,
-an as []b8 or as string byte view of one (8.2.5), and a slice local
-assigned one are all frame slices in turn. a with alias (9.10) carries
-the residence of the place it caches, so a slice taken through an alias
-of a local array is a frame slice too.</p>
-<p>what the rule measures is where the BYTES live, not where the header
-does. a slice parameter's 16-byte header is copied into the callee's
-frame while the elements it views belong to the caller, so returning a
-parameter, or a subrange of one, is sound and is the idiom by which a
-function hands back a view: the caller passes the storage in (a var
-buffer) and reads the written extent out. a slice over module-scope
-storage, or over a heap block, likewise outlives any call.</p>
-<pre>
-fn line []b8 () var b [16]b8 { return b[0:4]; }       -- rejected
-fn line []b8 (var b [16]b8) { return b[0:4]; }        -- the idiom
-</pre>
-<h3>6.3 record types</h3>
-<p>a record is a fixed sequence of named fields. the field list, a recdef,
-is a possibly empty comma-separated list of name-and-type pairs in
-braces. a run of names may share one type, written once after the last
-of them (see 7); the fields are laid out as though each had been written
-separately.</p>
-<pre>
-recordtype = &quot;record&quot; recdef .
-recdef     = &quot;{&quot; [ vardefs ] &quot;}&quot; .
-vardefs    = vardef { &quot;,&quot; vardef } .
-vardef     = ident { &quot;,&quot; ident } type .
-</pre>
-<p>fields are laid out in order with natural alignment; the record is
-aligned to the strictest alignment of its fields. a record may contain
-pointers to itself.</p>
-<p>a field may be non-null — a non-null pointer or an address. such a
-record is legal and instantiable: its non-null fields are deferred
-obligations, born one by one by assignment before the record is used as
-a whole (the field-level birth rule, 7). the exception is an untrackable
-member — a non-null under an array element or a union payload, where
-per-member birth cannot be verified; a record whose members are all
-trackable may itself be a local (7).</p>
-<pre>
-type point record { x s64, y s64 }
-type cell  record { p ^s64, v s64 }   -- p is a deferred obligation (7)
-</pre>
-<h3>6.4 pointer types</h3>
-<p>a pointer is non-null by default: ^t holds the address of a value of
-type t. the optional pointer ^t|none adds the literal none; it admits
-only assignment, == and != (against none or a pointer of the same base),
-and narrowing (9.5). both occupy 8 bytes; none is address zero, so the
-option costs no storage.</p>
-<pre>
-pointertype = &quot;^&quot; type [ &quot;|&quot; &quot;none&quot; ] .
-</pre>
-<p>dereferencing, written p^, yields the pointed-to value as an lvalue. it
-applies to ^t only; an optional pointer is first narrowed to ^t by a
-guard (9.5). the lvalue is writable even where the pointer itself is not
-— an immutable parameter, or a pointer field of an immutable aggregate
-— since ^t addresses independent, mutable storage; immutability of the
-pointer bars only rebinding it (p = ...), not writing through it (10.1).</p>
-<p>the three non-null / optional pointer forms — ^t, ^t|none, and address
-— are affine owning types: single-owner, with no reference type and no
-lifetimes. what this governs is assignment of a pointer this function
-owns. when the right-hand side is a whole binding the function owns — a
-local, or a from/into parameter — the assignment moves it: the value is
-copied and the source dies (it becomes unusable until reassigned,
-exactly as a from argument dies, 10.1). when the right-hand side is a
-mutable optional lvalue the function does not own outright — an
-optional heap or record field (q = p^.next), or an optional var/borrow
-— the assignment takes it with null: the link is read and the source
-slot is left none at run time (the runtime none is the death).
-extracting a non-null pointer out of an aggregate slot (q = p^.link, a
-^t field) is rejected — there is no none to leave behind, so it would
-silently alias; borrow it instead (with, 9.10, or for with, 9.6). a move
-prevents two owners of one resource; a plain read for comparison, for
-passing as a bare or var borrow, or for a with / for with alias is
-non-consuming and leaves the owner usable. dropping a live owner is
-permitted (a leak, not an error); double-ownership and use-after-move
-are errors.</p>
-<p>the second half of single-ownership is the alias rule, which keeps a
-borrow from escaping. a typed pointer (^t/^t|none) is an owner when it
-comes from a local, a from/into parameter, or an rvalue (claim, a
-returning call, a move); it is a borrow (an alias) when it comes from a
-bare or var parameter, or a with / for with binding, and the taint
-follows every selector — what you reach through a borrow is itself a
-borrow. an owner has full rights: assign (move), return, store into a
-field, hand over from/into, free. a borrow may only be dereferenced,
-compared, passed as a bare/var argument (re-borrow), or re-aliased with
-a with / for with; it may not be assigned into a binding or field,
-returned, taken out of an aliased structure, or consumed. so a local
-always owns (an alias can never be assigned into it), which is exactly
-why returning a local, or a local record with pointer fields, is always
-sound. move ownership into a structure with an owner (n^.next = head
-over a from head); alias a place to read it with with / for with; never
-store a borrow. address is exempt — value-like at the trusted boundary
-(9.3), it copies freely — so an address carries no alias taint.</p>
-<p>the third half is exclusivity: at any point a place has at most one
-mutable path. because a borrow can be neither stored nor returned, it
-lives exactly as long as one call or one block, so this needs no
-lifetimes — only two local rules over places. a place is a variable
-followed by its selectors: fields, indexes, dereferences. two places
-overlap when they start at the same variable and neither path turns off
-the other: a place overlaps everything inside it, a.x and a.y are
-disjoint, a[0] and a[1] are disjoint, but an index that is not a literal
-may be any element, so a[i] overlaps every a[...]. the rules are the
-argument rule (10.1), that a call may not hand over a place twice when
-one of the two may be written, and the alias rule of with (9.10), that
-while a with or for with binding is live its place is reached through
-the binding alone. two gaps are known and not yet closed: a function
-reaching a module variable directly while that variable is also passed
-to it, and two slice values viewing the same bytes — a slice copies
-freely, so the rules see only the variable it was taken from.</p>
-<h3>6.5 enumeration and union types</h3>
-<p>an enumeration lists a fixed set of named variants separated by the bar
-operator; at least one variant is required. its representation is b8,
-distinct from any other enumeration — the same nominal distinctness a
-from declaration (6) confers on a type over any base.</p>
-<pre>
-enumtype = &quot;enum&quot; ident { &quot;|&quot; ident } .
-</pre>
-<p>a tagged union is a discriminated variant type; each variant carries an
-optional record of payload fields, written as a recdef (see 6.3). the
-tag is stored at offset zero; the payload area follows, aligned and
-sized to the strictest variant.</p>
-<pre>
-uniontype    = &quot;union&quot; unionvariant { &quot;|&quot; unionvariant } .
-unionvariant = ident [ recdef ] .
-</pre>
-<pre>
-type color enum red | green | blue
-type shape union circle { r s64 } | rect { w s64, h s64 }
-</pre>
-<p>each variant v of a union u names a subtype u.v. a subtype has the size
-and alignment of u but is fixed to one variant: a variable of type u.v
-has its tag initialised to v, and only v's payload fields are reachable
-through it. a variable of the union type u itself exposes no fields; it
-must first be narrowed to a subtype by a guard statement (9.5) or by a
-when statement over the union (9.4).</p>
-<p>a subtype converts to its parent union in one direction only: a subtype
-value may be supplied where the union type is expected — in particular
-as an argument, where it is passed by reference without copying (see
-10.1). the reverse conversion, assignment between subtypes, and
-whole-union assignment are all rejected; a union value is built through
-a subtype variable and shared by passing it.</p>
-<p>the compiler infers, from a union's shape alone, whether it is liftable
-— whether a plain value may be lifted into it in an argument position
-(see 8.2.5). a union is liftable if and only if every variant carries
-exactly one payload field and the variant field types are pairwise
-distinct. there is no source syntax and no marker token: the property is
-read off the declaration. a union that does not meet the shape — one
-with a multi-field variant, a payload-less variant, or two variants of
-the same field type — is simply non-liftable. this is never an error:
-such unions are perfectly legal and behave exactly as before; they just
-cannot be a lift target. shape above (variants of differing arity) and a
-union celsius { v f64 } | fahrenheit { v f64 } (two variants of one
-field type) are both valid and non-liftable. because liftability is
-inferred, distinctness is never diagnosed at the declaration; the only
-diagnostic appears at a call site (8.2.5).</p>
-<h3>6.6 function types</h3>
-<p>a function type describes a call signature.</p>
-<pre>
-functiontype = &quot;fn&quot; signature .
-signature    = [ type ] &quot;(&quot; [ param { &quot;,&quot; param } ] &quot;)&quot; [ raises ] .
-raises       = &quot;raises&quot; ( &quot;...&quot; | qualident { &quot;|&quot; qualident } [ &quot;|&quot; &quot;...&quot; ] ) .
-param        = ( &quot;into&quot; | &quot;var&quot; | &quot;from&quot; ) ident type | ident [ &quot;...&quot; ] type .
-</pre>
-<p>the leading type is the return type; it is omitted when the function
-returns nothing. the raises clause is part of the type: it names the
-exact set of failures — never kinds (see 9.9) — the function may
-propagate. the failures are separated by `|`, not by a comma: the list
-must stay closed under the comma that separates the enclosing parameter,
-record-field, or variable list, so that an inline function type carrying
-a raises clause can stand in any of those positions. a value of raising
-type may be called only where those failures are declared or handled.</p>
-<p>the clause may close with the unnamed failure, written ... — alone
-(`raises ...`) or after names (`raises file.fault | ...`). it stands
-for the failures the function may propagate without naming them:
-typically those of a function value it was handed, which are not known
-where the signature is written. it closes the clause because it already
-covers whatever a further name would say; nothing may follow it. a
-function whose signature carries it is called open, one whose clause is
-a plain list closed. what the named part of an open clause promises is
-undiminished — those failures are still exactly the ones the body can
-propagate under a name — so `raises file.fault | ...` tells a caller
-which failure to expect and handle by name, and that others may arrive
-besides. the unnamed failure is part of the type, unlike the two markers
-below, and 9.9 gives the rules that verify and discharge it.</p>
-<p>a function value converts to an open function type when the two agree on
-everything else — the parameters, their markers, and the result. the
-source's own failures are not compared: a function raising fewer, or
-none at all, keeps the promise the open type makes. the conversion never
-runs the other way, since a caller of an open value could not declare
-what it may raise. a closed function type accepts only its own type,
-which is what keeps a var or into parameter, an alias, and a definition
-matched against its prototype (10.3) exact.</p>
-<p>the inline marker is not part of the signature: it leads a declaration
-(`inline fn`, see 10.2), so a first-class function type — introduced by
-a bare `fn` — can never carry it. the ... marker of a variadic
-parameter (10.1) is likewise a property of a declaration, not of the
-type: it may not appear in a first-class function type, and the
-parameter it marks enters the type as an ordinary slice. neither is to
-be confused with the unnamed failure above, which stands after raises
-rather than inside the parameter list, and which the type does carry.</p>
-<h2 id="7-variable-declarations">7. variable declarations</h2>
-<p>a variable declaration introduces one or more named locations, each of a
-given type. a single var heads a comma-separated list of name-and-type
-pairs; a trailing comma is permitted. this is exactly the form function
-locals take (see 10), so the two scopes read alike.</p>
-<p>a run of names separated by commas may share one type, written once
-after the last of them: var first, last s64 declares two locations of
-type s64, exactly as var first s64, last s64 does. the type is what ends
-a run, so a comma after it opens the next — var x, y s64, r f64 groups
-x and y and leaves r alone — and grouped and singly-typed names mix in
-one list in any order. the grouping is a spelling and nothing more: each
-name is a location of its own, laid out and initialised as though it had
-been written separately, and a distinct type stays distinct for every
-name of the run.</p>
-<pre>
-vardecl = ( &quot;var&quot; | &quot;final&quot; ) vardefs .
-</pre>
-<p>a declaration headed final instead of var declares final variables
-(7.1); everything said here of a var holds for them too.</p>
-<p>module-scope variables reside in the module's bss segment and are
-zero-initialised. a zeroed slice, non-null pointer or address is not a
-valid one, so a variable that is or holds one — directly or as a record
-field — starts unborn and is born in the module's setup (7, 11.5). one
-holding a non-null pointer or address under an array element or a union
-payload cannot be tracked and is rejected; so is a module ^t whose
-pointee itself carries such members (it is not tracked through the
-pointer). use an optional pointer, or s64 for raw address bits, there.
-function locals (see 10) reside on the activation frame and are likewise
-zero-initialised.</p>
-<pre>
-var count s64
-var origin point
-var names [16]string
-var first s64, last s64
-var head, tail s64          -- one type, two locations
-var x, y s64, scale f64     -- a run, then a name of its own
-</pre>
-<p>every variable, module-scope and local, scalar and aggregate, is
-zero-initialised, and zero is a valid value everywhere — with one
-exception: a local of non-null type — a pointer ^t or an address — or
-of slice type, which is born only by assignment or by being passed as
-the argument to an out parameter (10.1), and by no other means. it may be used — read,
-dereferenced, or passed with or without a var/into marker — only where
-such a birth stands earlier in the same or an enclosing statement
-sequence. this is sound without flow analysis: no construct jumps into
-the middle of a statement sequence, and after birth the type system
-preserves validity, since only a non-null value assigns to such a
-variable and an out parameter is verified to build one. its conditional
-birth is written with the if expression, not with assignments inside
-branches:</p>
-<pre>
-p = heap.claim node;       -- born here; ^t for the rest of the block
-p = if first { a; } else { b; };
-make into p;                -- also a birth: `make` constructs p (10.1)
-</pre>
-<p>a slice is held to the same rule because a zeroed slice views address
-zero: an index through it reads or writes there, and nothing in the
-slice says so. an empty slice is written as a value — &quot;&quot; for a string,
-a[0:0] over an array — and assigned like any other. a slice owns
-nothing, so it has no death, and a from parameter (10.1) may not take
-one.</p>
-<pre>
-s = buffer[0:n];            -- born here
-s = &quot;&quot;;                     -- the empty slice, born the same way
-split path, into s;         -- a callee that fills s takes it into
-</pre>
-<p>the birth rule has a mirror, the death: an owned pointer whose value has
-been moved out (assigned or passed to a from parameter, 6.4, 10.1) is
-dead — unusable until reassigned — for the rest of the sequence and
-all following paths (a death, unlike a birth, is not undone at block
-close). an optional pointer ^t|none is affine too, but carries no birth
-rule: a fresh one is validly none, so it is usable at once (compared,
-guarded, borrowed); only a moved-dead optional is blocked, and
-reassigning it revives it. guarding a moved-dead optional is thus a
-use-after-move (9.5).</p>
-<p>this extends field by field to an aggregate. a local record with
-non-null or slice members, and a ^rec local assigned an address (the
-trusted boundary, 9.3, hands back storage whose non-null fields are not
-yet valid — as heap.claim does), carry one obligation per leaf: a
-non-null or slice member reached without crossing another pointer (a
-pointer terminates the recursion — a ^inner field is one leaf, its
-pointee proven born wherever it was made). each leaf is born by a direct
-one-path assignment to it — c.p = ..., q^.p = ..., o.in.p = ... — and
-the aggregate is born as a whole once every leaf is. while any leaf is
-pending, no whole-use of the aggregate or a sub-object is allowed (read,
-copy, return, compare, pass by value, pass with var/out, or with-alias)
-and an unborn leaf may not be read; a plain scalar field stays readable,
-and writing a leaf is the birth. this is the same soundness argument: a
-partially-born aggregate cannot escape, so no alias to it exists, which
-is why assigning an already-existing ^rec value (a pointer, not an
-address) carries no obligation — it was proven born when it was made. a
-compound assignment (+=) is a read, so it is barred on a pending leaf.</p>
-<p>a pending aggregate may also be born by passing it to an out parameter
-(an out argument, 10.1): the callee is verified to initialise it — an
-out parameter starts pending inside the callee and must birth every
-leaf before any normal return — so the argument is born for
-the rest of the caller's statement sequence once the call returns
-(block-scoped, like any birth). this is what lets a constructor, written
-create into self, n; over an into self parameter, build a record with
-non-null fields and hand it back valid. a variable parameter (var) is by
-contrast inout: its fields are taken as born on entry, so a mutator (set
-self, i; over the same var self) reads them freely — and the caller
-must pass a fully born aggregate to it. the marker chosen at the call
-site (into vs var) therefore states, and the compiler checks, whether a
-call constructs or mutates.</p>
-<p>inside an on handler body (9.9) such a local may not be used, since a
-failure may fire before any birth; all other locals and the parameters
-remain accessible there. an array or slice element may never be
-non-null nor contain a non-null member (6.2, 6.3). an untrackable
-aggregate — one with a non-null under an array element or a union
-payload, where per-member birth cannot be verified — may not be a local
-at all, nor the target of the address-to-pointer conversion (9.3). a
-slice under an array element or a union payload is not tracked: zero
-stays the empty slice there.</p>
-<p>a module-scope variable of such a type — a slice, a ^t, an address, or
-a record with such leaves — obeys the same rule, with the module's
-setup (11.5) as its statement sequence. it starts unborn, and is born
-for good by setup's own outermost sequence — an assignment, a leaf
-store, or an into argument there — and by nothing else: a birth
-anywhere else lasts for its block, like a local's. since a name binds
-where it is defined and nothing compiles twice, the rule is positional
-and needs no flow analysis. every function that uses such a variable
-stands below setup; a variable declared after setup, or one setup leaves
-unborn, is an error. within setup the births come first: setup may not
-return early while one is pending, and while one is pending it may not
-call or take the address of a function that may run code defined further
-down — a prototype still without a body, or a function whose body
-reached one. a birth may follow a call that can raise only when the
-fault leaves setup, which fails the import (11.5) so that nothing ever
-sees the variable unborn; once a birth follows such a call, setup may
-have no on handler, since a handler could end it normally past the
-birth. at the prompt, which has no setup, the unit's top-level
-statements play its part: `var s string` alone leaves s unborn, and a
-later top-level `s = &quot;&quot;` births it for good. a prompt unit is committed
-before it runs, so there a birth may not follow a call that can raise
-at all.</p>
-<p>a module ^t owns its pointee for as long as the module lives. it may be
-dereferenced in place or borrowed as a plain argument, but not copied
-into a binding, returned, or passed from (6.4): any of those would alias
-it. a pointer from heap.claim is born in a setup that raises the
-claim's fault on:</p>
-<pre>
-var p ^cell
-
-fn setup () raises heap.fault {
-  p = heap.claim cell;
-}
-</pre>
-<p>born says a slice was assigned a real value, not that the value is the
-one a later use wants: the language has no bounds checks, so an empty
-slice indexed past its length reads whatever lies there, exactly as a
-local's would. all other scalars keep plain zeroing with no birth obligation, so
-variable-parameter idioms like float.decompose x, var m, var e; need no
-prior assignment; a slice handed to a var parameter must be born first,
-and one the callee only fills is an into parameter.</p>
-<h3>7.1 final variables</h3>
-<p>a final variable is written once. it is declared exactly as a variable
-is, with final in place of var — at module scope, or in a function's
-locals (10), where final and var clauses mix freely — and the two
-differ only in what may be done with the name once it holds a value.</p>
-<pre>
-final cache []b8
-
-fn setup () {
-  cache = view_at (cache_base as address), (capacity * page_bytes);
-}
-
-fn lba_of s64 (vol s64, page s64) final sh b64 {
-  sh = kore.shil (page as b64), vols[vol].shift;
-  return vols[vol].part_lba + (sh as s64);
-}
-</pre>
-<p>a final of any type starts unborn and obeys the birth rule above, which
-for it is the whole story: it may not be read, passed or aliased before
-its birth, and its birth is its one write. it is born by an assignment
-to the bare name or by being passed as an into argument (10.1) — the
-only way a record or an array, which have no values to assign, are born
-— and by nothing else. a write through a field or an element is not a
-birth. the birth is positional as every birth is: it lasts to the end
-of the statement sequence that holds it, so a birth inside a branch
-does not survive the branch, a conditional birth is written with the if
-expression, and a birth inside a loop body is made afresh on every
-iteration. a module final is born for good in setup's outermost
-sequence (11.5), and a final declared after setup is never born.</p>
-<p>once born, the name is fixed: an assignment, += or -=, a bit store, a
-var argument or a second into argument naming it is rejected, and so
-is a write through a with alias of it (9.10). a birth may not stand
-where the positional rule cannot see it run once and first: in a for
-step (9.6), which runs after the body and perhaps never; in a defer
-(9.8), which replays at every exit; or in an on handler (9.9), where
-the fault may have come after the birth. nor may a local final be used
-in a handler at all, since the fault may have come before it.</p>
-<p>final fixes the binding, not what it reaches. a final scalar, record,
-array or union is a read-only place, written by no one after its birth.
-a final slice cannot be rebound, but its elements are as writable as its
-type says — cache above is written through every time the cache fills
-— and the view, when one is wanted, is written as the type, final s
-const string. a final pointer cannot be rebound; its pointee is written
-through it as through any pointer. an owned final pointer may still be
-moved out or passed to a from parameter (6.4, 10.1), which is its death;
-being final, it is never born again. a module final owns its pointee for
-good: it is neither moved nor taken with null.</p>
-<p>an imported final is as fixed to its importers as it is to its own
-module.</p>
-<h2 id="8-expressions">8. expressions</h2>
-<p>an expression denotes the computation of a value. an expression is an
-lvalue when its principal operand is.</p>
-<h3>8.1 operands</h3>
-<pre>
-primary = atom | ifexpr .
-atom    = &quot;none&quot; | &quot;true&quot; | &quot;false&quot;
-        | integer | hex | fp | character | string
-        | qualident
-        | &quot;fn&quot; atom { index | field | deref }
-        | &quot;(&quot; expr &quot;)&quot; .
-ifexpr  = &quot;if&quot; expr compound [ &quot;else&quot; ( ifexpr | compound ) ] .
-qualident = ident [ &quot;.&quot; ident ] .
-</pre>
-<p>a qualified identifier selects a name from an imported module, a record
-field, a union variant, or an enumeration variant. the if expression is
-described with the if statement (9.3).</p>
-<p>an atom marked fn denotes a function value: the designator after the
-marker must be of function type — a function, or a variable, field, or
-element holding one — and it is taken, never called. it is the only way
-to write a function value; a function designator without the marker is a
-call (9.2). `fp = fn clock.now` assigns the function, `pick fn x.f`
-passes the one held in a field.</p>
-<p>index, slice, field selection, and dereference are postfix operators on
-any primary and combine freely. a trailing argument list makes the
-postfix expression a function call; its form is defined in 9.2.</p>
-<pre>
-postfix = primary { index | field | deref } [ args ] .
-index   = &quot;[&quot; expr [ &quot;:&quot; expr ] &quot;]&quot; .
-field   = &quot;.&quot; ident .
-deref   = &quot;^&quot; .
-</pre>
-<p>a[lo:hi] on an array or slice yields a slice borrowing the same storage,
-from lo up to but excluding hi. the same form on a b64 extracts a
-bit-field (see 8.2.3).</p>
-<h3>8.2 operators</h3>
-<p>the precedence classes, from highest to lowest:</p>
+<h2 id="2-declarations-and-scope">2. Declarations and scope</h2>
 <ul>
-<li>postfix — call, index, field, deref</li>
-<li>cast — as</li>
-<li>unary — -</li>
-<li>multiplicative — *, /, mod</li>
-<li>additive — +, -</li>
-<li>relational — ==, !=, &lt;, &lt;=, &gt;, &gt;=</li>
-<li>assignment — =, +=, -=</li>
+<li>Declare before use. A function name binds at its signature, before its body, so a body may call itself; a callee must still be defined (or deferred with ...) above its caller, so two functions calling each other defer the lower one.</li>
+<li>Top-level names are module-wide; those before the module's ... separator are exported.</li>
+<li>A function body opens a scope; a nested scope may redefine an outer name for the rest of the body. A compound { } opens no scope of its own for locals, but with/guard bindings last to the end of the enclosing compound.</li>
+<li>The built-in names (4.1, 6.2: the primitive types, integer, length, ram_base, and, or, not) are reserved: no function, variable, constant, type, failure, parameter, local or with binding takes one (reserved name). A record field may.</li>
 </ul>
-<p>arithmetic and relational operators require both operands to have the
-same type after implicit coercion (see 8.2.5). a distinct type (type x
-from y, 6) matches only itself here — not its base y, nor another
-distinct type over y — though an integer literal still coerces to it;
-an arithmetic operator on two values of one distinct type yields that
-same distinct type.</p>
-<h3>8.2.1 logical and bitwise operators</h3>
-<p>conjunction, disjunction, and negation are written as calls of the
-predefined names and, or, and not. each of the three is polymorphic in
-the same way: over bool it is the logical operation, over an integer
-type the bitwise one. there is no separate spelling for the bitwise
-forms — these three are the whole of and, or, and not in the language.</p>
-<pre>
-and ( x0, x1, ... )         conjunction, logical or bitwise
-or  ( x0, x1, ... )         disjunction, logical or bitwise
-not ( x )                   negation, logical or bitwise
-</pre>
-<p>and and or are forms, not functions: they cannot be taken as values with
-fn, and they take at least one argument. not is
-an ordinary function. since an argument is an atom (9.2), composite
-arguments are parenthesised:</p>
-<pre>
-and (0 &lt;= i), (i &lt; limit)
-</pre>
-<p>the first argument decides which operation the form denotes, and the
-remaining arguments must agree with it.</p>
-<p>over bool, and and or short-circuit: they evaluate left to right and
-stop at the first false or true argument respectively — an exception to
-the call rule of 9.2 — and yield bool. not b is the logical negation.</p>
-<p>over an integer type, and and or combine every argument with a bitwise
-and or a bitwise or. there is no short-circuit here: all arguments are
-evaluated, in order. the arguments must share one type, except that an
-untyped literal adopts the others', and the result has that shared type.
-not x is the bitwise complement, within the operand's own width — on b8
-it complements the eight bits, so not 0xf0 is 0x0f, not a value outside
-the type.</p>
-<pre>
-and mask, 0xff             -- bitwise, when mask is b8 / b64 / s64
-or  flags, 0x08
-not mask                   -- complement
-</pre>
-<p>mixing the families is an error: every argument of one form is bool, or
-every one is an integer of a single type. the bit module (8.2.3,
-appendix b) supplies the shifts, xor, and the bit counts.</p>
-<h3>8.2.2 arithmetic operators</h3>
-<p>the binary +, -, *, / apply to integer and f64 operands; mod applies to
-integer operands only. unary - applies to every integer type and to f64.</p>
-<p>integer arithmetic wraps around: a result is reduced modulo 2^64 for s64
-and b64, and modulo 2^8 for b8; overflow never raises a failure. on the
-bit types the wrap is the whole story — there is no sign to lose — and
-unary - is the two's-complement negation, 0 - x.</p>
-<p>/ and mod read their operands the way the type does: signed on s64,
-unsigned on b8 and b64. so a b64 whose high bit is set divides as a
-magnitude near 2^64, not as a negative. signed division truncates toward
-zero and x mod y takes the sign of the dividend x, so that
-x = (x / y) * y + (x mod y) holds; on the bit types both operands are
-non-negative and the identity holds trivially. division by zero follows
-the rv64 processor and raises no failure: x / 0 yields -1 (all bits set
-on a bit type), x mod 0 yields x. f64 division follows ieee-754: x / 0.0
-yields infinity of the sign of x, and 0.0 / 0.0 yields nan.</p>
-<h3>8.2.3 bit field operators</h3>
-<p>for b of a bit type — b8 or b64 — and integer expressions i, j:</p>
+<h2 id="3-constants">3. Constants</h2>
 <ul>
-<li>b [ i ] — bit i of b, of type bool</li>
-<li>b [ i : j ] — bits i .. j-1 of b, of b's own type</li>
+<li>n = constexpr, with no keyword; folded at the declaration. So are a record-constant field, an array-constant element and an array size. At module scope no statement can stand, so a name opening a declaration always opens a constant.</li>
+<li>At the prompt n = v assigns when n is a variable and defines a constant otherwise, replacing any other binding of n. t.n = v defines a scoped constant when t is a type; through a variable or a module it assigns.</li>
+<li>There is no type slot. A scalar constant takes its value's type; x as t writes one, converting as 6.6 does. An aggregate literal that cannot say its type takes it as a prefix (3.1, 3.2).</li>
+<li>constexpr: an expression (6.1) over constants — integer, fp, bool, character literals; named constants (n, m.n, t.n); enum variants; ram_base; a type name (its size in bytes, int) — with + - * / mod, unary -, ( ), x as t between scalar types, and the forms and, or, not. No relation, call or other operator. A string, slice or record constant is an operand alone.</li>
+<li>Computed as at run time (6.1-6.3, 6.6): an untyped operand adopts a typed one's type, two typed operands must match, each operation wraps to its type, / and mod signed on int, unsigned on bit types, x / 0 = -1, x mod 0 = x. An expression of untyped operands only stays untyped: it adopts the type it meets later.</li>
+<li>A named constant brings its value and type.</li>
+<li>A type given to a value — a prefix's element, a record field, a scoped constant's type — must admit it; an untyped integer fits any integer type, but an out-of-range value (300 in byte, -1 in word) is rejected, never truncated.</li>
+<li>fn d (address of function d) and an in-place record have no type of their own: only as a record-constant field or an element of an array constant with a prefix slice type. d must already have its final address (imported module, or earlier prompt unit); a function of the current module or an inline one is rejected. fn d alone is not a constant.</li>
 </ul>
-<p>bit 0 is the least significant. an index at or past the width, and the
-part of a range that lies past it, read as zero rather than raising.</p>
-<p>both forms are places: either may stand on the left of an assignment,
-and the store leaves every bit outside the named field unchanged.</p>
-<pre>
-b [ i ] = truth              -- truth is a bool
-b [ i : j ] = v              -- v is of b's own bit type
-</pre>
-<p>the operand must itself be a place — a variable, a field, an element —
-under the same rules a whole-variable assignment answers to (9.1). the
-bounds are ordinary expressions, evaluated once, and a value wider than
-the field is truncated to it rather than overwriting its neighbours.</p>
-<p>bitwise and and or are the integer forms of the and and or operators
-(8.2.1); the bit module exports the shifts, xor, and the bit counts.</p>
-<h3>8.2.4 relations</h3>
-<p>the six relational operators compare two values of the same type and
-yield bool. f64 comparison follows ieee-754 ordering. an integer
-comparison follows its family: s64 and integer order as signed, the bit
-types b8 and b64 as unsigned magnitudes.</p>
-<p>pointers compare with == and != only — no ordering. the operands must
-share a base type, ^t and ^t|none mutually comparable; a non-null
-pointer against none is a compile-time error (it can never be none).</p>
-<h3>8.2.5 type conversions</h3>
-<p>an explicit conversion has the form</p>
-<pre>
-cast = unary [ &quot;as&quot; type ] .
-</pre>
-<p>the permitted conversions are</p>
+<h3>3.1 Array constants</h3>
 <ul>
-<li>any integer type to any integer type</li>
-<li>any integer type to f64</li>
-<li>f64 to any integer type, truncating toward zero</li>
-<li>any scalar to bool (non-zero is true)</li>
-<li>array of t to slice of t</li>
-<li>an aggregate or a slice to []b8 (string) — a raw byte view: the result borrows the operand's storage, its length the operand's size in bytes. the operand must have addressable backing, so a bare scalar value, having none, is rejected. there is no implicit form of this conversion (an arbitrary value does not silently become bytes); the text module's formattable union (appendix b) gives the variadic printers their own view of any argument instead</li>
-<li>[]b8 (string) to a slice of any other element type — the reverse of the byte view: the result borrows the same storage, its element count the byte count divided by the element's size. a byte count that is not a whole multiple of that size drops the partial trailing element, the division truncating rather than raising. the program asserts the bytes hold values of the element type, the assertion address-to-pointer makes for one value. an array of b8 converts likewise, its byte count being its size</li>
-<li>[]b8 (string) to a scalar type — a load of the leading bytes: the count is dropped and the program asserts the view holds at least one such value. the load needs no alignment. these two, with the byte view above, are what carry a value out to bytes and back, so one byte-keyed module serves every element type (core/collections/array, appendix b)</li>
+<li>[e, e, ...] binds the name to a const []t slice over elements in the image; never an array. A string constant is the []byte case.</li>
+<li>[]t [e, e, ...] writes the element type as a prefix: [] then a type, then the list. A bare [] is the empty list, and [n]t is no prefix.</li>
+<li>Element type: the prefix's element type, else the first element's (untyped integer -&gt; int). Every element must fit. So []byte [27, 91] is a byte table, [27, 91] an int one.</li>
+<li>Elements: scalar constants (a constexpr of bool, integer, fp, char, enum variant or names for them), slice constants (a string in place, or a named string/array constant), record constants (in place or named), and fn d. A record in place and fn d need the prefix: []point [{x: 1}].</li>
+<li>Rejected: empty list, none, nested list [[1]], arrays. Tables of tables are spelled by naming: [a, b].</li>
+<li>Read-only place: index and sub-slice only; no writes, no var/into argument, assignable only to const []t.</li>
 </ul>
-<p>a conversion never makes a view writable (6.2): a slice made out of a
-view, or over a read-only place — the byte view of a constant or of a
-plain parameter, a typed slice over one, the array-&gt;slice conversion
-of a read-only array — is the view of the slice type named, so k as
-[]b8 over a constant k is a const []b8. reading the leading bytes as one
-scalar is a read like any other.</p>
-<p>neither conversion out of bytes may name a target that carries an
-address anywhere within it — a pointer of either kind, an address, or a
-record, array or union holding one at any depth. a pointer is born from
-a claim, from another pointer, or from the trusted forge below, and
-reading one out of data would be a fourth way in with nothing at the
-site to mark it. the restriction is on this direction alone: taking the
-bytes of a value that holds a pointer stays permitted, since that only
-reveals bits already readable through address and s64, and the bytes so
-taken are inert — they can come back as integers, and a program that
-means to make an address of one writes the forge and says so.</p>
+<h3>3.2 Record constants</h3>
 <ul>
-<li>a pointer (either kind) to address</li>
-<li>address to a pointer of any base type — the program asserts the storage is a valid place for the base type, but not that its non-null members are already valid: those become deferred field obligations, born before the pointee is used as a whole (the field-level birth rule, 7). the base type must be trackable — a non-null under an array element or a union payload cannot be tracked, so a pointer to such a type may not be forged from an address (nor is such a pointer otherwise instantiable). this typing assertion is also made by the implicit form of the conversion, see below</li>
-<li>any integer type to address — the trusted forge, the one place a non-null address is made from raw bits: the program asserts the value is non-zero and names real storage</li>
-<li>address to any integer type — raw inspection; address arithmetic is written this way, through s64, and forged back</li>
-<li>a non-null ^t to the optional ^t|none of the same base</li>
-<li>a distinct type (type x from y, 6) to or from its base y, and between two distinct types of the same representation — the cast is judged on the shared underlying type, so it carries no runtime cost beyond any the base-to-base conversion already implies. a distinct type takes part in no implicit conversion through its wrapper; every crossing is an explicit as</li>
+<li>c = rec {f: v, ...}: the type as a prefix (t, m.t), then the record literal of 7.1 with constant values. Left out is zero; a slice field is given. A record literal without a prefix has no type and is rejected.</li>
+<li>Field values: scalar (a constexpr), enum variant, none (optional pointer), string/slice constant (slice field), fn d (function field), record in place or named.</li>
+<li>A type with a non-null pointer, address, array or union field has no constants.</li>
+<li>Read-only place: fields read, with-aliasable, passed by reference to a bare record parameter; no writes, no var/into, no whole copy. Slices read out of it are views.</li>
 </ul>
-<p>a b8 target keeps the low 8 bits; a wider integer target extends the way
-the source's family reads, sign-extending from s64 and zero-extending
-from b8. a conversion between an integer type and f64 reads the integer
-side by its family as well: s64 crosses as a signed value, a bit type as
-an unsigned one, so a b64 in the high half becomes a double near 2^64
-rather than a negative. a cast may not target a union subtype, nor
-produce a non-null pointer except from address or a non-null pointer of
-the same base. narrowing — a union to a subtype, an optional pointer to
-^t — is performed only by guard (9.5) or when (9.4).</p>
-<p>a cast to the type its operand already has is a compile-time error: it
-converts nothing, and it is either noise or a sign the writer believes
-the operand is something else. an alias (type x as y, 6) names the same
-type, so a y cast to x is one such. an untyped literal has no type of
-its own until it meets one, so 0 as b8 stays a conversion.</p>
-<p>implicit conversions occur in assignment, argument passing, and
-comparison: an integer literal adopts the type it meets (never address
-— a literal zero must not become one; see the trusted forge above), an
-array converts to a slice where one is required, none converts to an
-optional pointer type, a non-null pointer widens to the matching
-optional pointer, and address converts to and from any pointer type. the
-address-pointer conversion loses no nullability — both sides are
-non-null — and asserts only the typing, exactly as the explicit cast
-does; it is what lets heap.claim's address result initialise the ^t it
-meets (appendix b).</p>
-<p>a further conversion, value-to-union lifting, occurs only in argument
-passing. where a parameter type is a liftable union u (see 6.5) and the
-argument is neither u nor one of its subtypes, the argument is lifted:
-the compiler builds a temporary union value — a tag and the payload —
-at the call site and passes it by reference, exactly as any union
-argument is passed (10.1). the variant is selected from the argument's
-type: first, the variant whose single field type equals it; otherwise,
-the variant whose single field type it is implicitly convertible to by
-the conversions above (integer-literal to integer type, [n]t to []t, so
-a string or array reaches a slice-typed variant). a bare integer literal
-first takes its default type s64 and then matches a variant by s64 — a
-liftable union without an s64 variant does not accept integer literals
-implicitly, and an explicit conversion is written instead. zero matching
-variants, or more than one at the same level, is a compile-time error
-(no liftable variant for the argument type, or an ambiguous lift); an
-attempt to lift into a non-liftable union is likewise rejected. an
-argument already of the union type or a subtype is passed directly, with
-no lift. lifting is confined to argument passing — it is never an
-assignment, a cast, or a return path.</p>
-<pre>
-type item union i { v s64 } | r { v f64 } | s { v string }
-
-fn show (b item) {
-  when b {
-  * item.i: tty.say &quot;int &quot;, b.v;
-  * item.r: tty.say &quot;real &quot;, b.v;
-  * item.s: tty.say &quot;text &quot;, b.v;
-  }
-}
-
-fn show_all (xs ...item) var i s64 {
-  i = 0;
-  for i &lt; length xs; i += 1 {
-    with e = xs[i];
-    show e;
-  }
-}
-
-show 42;                       -- s64 -&gt; item.i
-show &quot;hi&quot;;                     -- [n]b8 string -&gt; item.s
-show_all 42, 3.14, &quot;hi&quot;;       -- each pack slot lifted by its own type
-</pre>
-<p>examples of expressions (refer to 6 and 7):</p>
-<pre>
-count + 1                    (s64)
-origin.x - origin.y          (s64)
-names[i]                     (string)
-names[2:5]                   ([]string)
-flags[3]                     (bool, flags of type b64)
-p^.x                         (s64, p of type ^point)
-count as f64                 (f64)
-</pre>
-<h2 id="9-statements">9. statements</h2>
-<p>statements denote actions. a compound statement is a sequence of
-statements in braces; the braces introduce no new scope, and an empty
-compound { } is permitted.</p>
-<pre>
-compound = &quot;{&quot; [ stmts ] &quot;}&quot; .
-stmts    = stmt { stmt } .
-stmt     = return | defer | raise | for | break | continue
-         | if | guard | when | with | ( expr &quot;;&quot; ) .
-</pre>
-<p>each simple statement — expression (including assignment), return,
-defer, raise, break, continue, guard, with — is terminated by its own
-semicolon; no separator stands between statements. a compound-form
-statement (if, when, for) ends at the closing brace of its body and
-carries no semicolon. braces are never elided: an input such as `for
-cond stmt;` is rejected rather than absorbed into the next statement. a
-function body (see 10) is itself brace-delimited, so its closing } is
-distinct from that of its last compound-form statement.</p>
-<h3>9.1 assignments</h3>
-<p>assignment is an expression; its result is the value of the right-hand
-side. chained assignment is not permitted.</p>
-<pre>
-assign = compare [ ( &quot;=&quot; | &quot;+=&quot; | &quot;-=&quot; ) compare ] .
-</pre>
-<p>the left-hand side must be an lvalue: a local or module variable, or a
-location obtained by indexing, field selection, or dereference.
-aggregates of array or record type are not assignable as a whole; they
-are updated field by field. a slice assignment copies the data pointer
-and length only, not the elements. the compound assignments += and -=
-apply to scalars only. a final variable is assigned once, by the
-assignment that is its birth (7.1).</p>
-<h3>9.2 function calls</h3>
-<p>a function call is a postfix operator on a function-valued primary.
-arguments follow the callee directly, with no surrounding parentheses;
-the list ends at the first token that is neither a comma, a var/out
-argument marker, nor an atom-starter (literal, qualident, fn, or `(` ).</p>
-<pre>
-args = arg { &quot;,&quot; arg } .
-arg  = ( &quot;into&quot; | &quot;var&quot; | &quot;from&quot; ) atom { index | field | deref }
-     | atom { index | field | deref } .
-</pre>
-<p>an argument is an atom optionally followed by non-call postfix
-operators; binary operators and nested calls must be parenthesised.
-arguments are evaluated from left to right, before the transfer of
-control. thus `f a + b` parses as `(f a) + b`; to call f with the sum,
-write `f (a + b)`. but `f a[i]`, `f a.x.y`, and `f a^.x` are valid and
-pass the derived lvalue.</p>
-<p>a zero-argument call is the bare designator: a function designator used
-as a value, with no arguments following, is called with none, whatever
-the context expects. `last = clock.now` calls clock.now; so does
-`fp = clock.now`, which therefore needs clock.now to return a function.
-the function value itself is written with the fn marker (8.1):
-`fp = fn clock.now`. whether a designator is a call is thus read off the
-designator alone, never off its surroundings. the one place a function
-designator is not a value is where it names storage — the left side of
-an assignment and a var or into argument — so `fp = fn g` stores into fp
-rather than calling it. only a named function or a function-typed
-variable or parameter can be called; a function held in a field or
-element (`r.f`, `a[i]`) must be taken with fn into a variable first, and
-written bare it is an error.</p>
-<p>a variable parameter must be supplied with a writable lvalue, marked var
-before the argument at the call site (see 10.1); an out parameter
-likewise, marked into. the marker must match the parameter kind exactly:
-a var or into argument to an immutable parameter is a mismatch, and an
-immutable parameter takes a bare argument. when the callee's last
-parameter is variadic (10.1), the trailing arguments past the fixed ones
-form that parameter — either an existing slice passed directly or a
-pack collected into a caller-built array. a call to a raising function
-propagates that function's declared failures through the call site; each
-must appear in the caller's raises clause or be discharged by a handler
-(see 9.9).</p>
-<h3>9.3 if statements</h3>
-<pre>
-if = &quot;if&quot; expr compound [ &quot;else&quot; ( if | compound ) ] .
-</pre>
-<p>the condition is of type bool; every branch is a brace-delimited
-compound, so there is no dangling-else ambiguity. a multi-way
-conditional is an else-if chain. the closing } of the last branch
-terminates the statement; no semicolon follows.</p>
-<p>an if construct is also an expression (ifexpr, 8.1). used as an
-expression it must have an else, and all branches must yield values of
-one type; a branch yields the value of its last statement. an expression
-statement built from an ifexpr follows the (expr &quot;;&quot;) rule and so
-carries a terminating semicolon:</p>
-<pre>
-x = if y &gt; 0 { 1; } else { 2; };
-</pre>
-<h3>9.4 when statements</h3>
-<p>a when statement selects a statement sequence by comparing a value
-against constant labels.</p>
-<pre>
-when      = &quot;when&quot; expr &quot;{&quot; { case } [ elsecase ] &quot;}&quot; .
-case      = &quot;*&quot; caselabel { &quot;,&quot; caselabel } &quot;:&quot; stmts .
-caselabel = integer | hex | character | qualident .
-elsecase  = &quot;*&quot; &quot;else&quot; &quot;:&quot; stmts .
-</pre>
-<p>the scrutinee is evaluated once; its type must be s64, b8, b64, an
-enumeration, or a tagged union. each label is a compile-time value of
-the scrutinee's type under the rules of 8.2.4: an enumeration admits
-only its own variants, written out or named by a constant of the
-enumeration's type (5); the other types admit integer and hex literals,
-integer constants, and — for b8 — character literals in 0 .. 255. a
-constant of a distinct type, such as a scoped constant (5.3), matches
-only a scrutinee of that same type. all
-labels must be distinct.</p>
-<p>the first case with a matching label runs; control resumes after the
-closing }. there is no fallthrough; a case body cannot be empty —
-labels sharing a body are written in one comma-separated case. the else
-case, last if present, runs when no label matches.</p>
-<p>for an enumeration scrutinee the statement must be exhaustive: every
-variant labelled, or an else present — a non-exhaustive when is
-rejected, in the same spirit as the verified raises clauses (9.9). for
-the other scrutinee types an unmatched value without else does nothing.</p>
-<p>a when statement may also dispatch on a tagged union. the scrutinee must
-then be a plain variable — local, parameter, or module variable —
-since the statement retypes its binding. each case names exactly one
-variant subtype u.v; within that case the variable is narrowed to the
-subtype as by guard (9.5), and the narrowing ends with the case.
-exhaustiveness applies as for enumerations; in an else case the variable
-keeps its union type.</p>
-<p>note that every case carries a leading *, the first included — a
-bullet prefixing each case, not a separator between them, and distinct
-from the bar of enum and union declarations (6.5) and of guard (9.5).
-like if and for, when ends at its closing } with no semicolon.</p>
-<pre>
-fn brightness s64 (c color) {
-  when c {
-  * color.red: return 30;
-  * color.green: return 59;
-  * color.blue: return 11;
-  }
-  return 0;
-}
-
-fn area s64 (s shape) {
-  when s {
-  * shape.circle: return s.r * s.r;
-  * shape.rect: return s.w * s.h;
-  }
-  return 0;
-}
-</pre>
-<h3>9.5 guard statements</h3>
-<pre>
-guard  = &quot;guard&quot; ident [ typename ] &quot;|&quot; escape &quot;;&quot; .
-escape = ( &quot;return&quot; arg ) | ( &quot;raise&quot; qualident &quot;.&quot; ident )
-       | &quot;break&quot; | &quot;continue&quot; .
-</pre>
-<p>a guard statement narrows a variable for the rest of the enclosing
-block. the discriminant is tested at run time; on success the binding is
-retyped (storage unchanged, only the compile-time type), on failure the
-escape is taken: return arg returns from the function; raise
-failure.kind raises that kind, whose failure must appear in the raises
-clause; break and continue act on the enclosing loop, and are valid in a
-loop only.</p>
-<p>with a typename, ident names a tagged-union variable (or subtype) and
-typename a subtype u.v of it (see 6.5); a matching tag retypes the
-binding to u.v, exposing the payload as ident.field.</p>
-<pre>
-fn area s64 (s shape) {
-  guard s shape.circle | return 0;
-  return s.r;
-}
-</pre>
-<p>without a typename, ident names an optional pointer ^t|none, tested
-against none; the non-null path retypes it to ^t for dereference. the
-optional must be live: guarding a moved-dead optional (6.4, 7) is a
-use-after-move and is rejected.</p>
-<p>the narrowing ends with its block, or earlier when the variable is
-assigned a value of its declared (optional) type — which may make it
-none again (so `p = p^.next` on a guard-narrowed owning `p` ends the
-narrowing). to walk a borrowed list, use the for with borrow-loop (9.6):
-a bare list parameter is a borrow, so its head cannot be copied into a
-manual cursor (the alias rule, 6.4) — for with reborrows each step
-instead, and never disturbs the list.</p>
-<pre>
-type node record { next ^node|none, value s64 }
-
-fn sum s64 (head ^node|none) var total s64 {
-  total = 0;
-  for with p = head; p.next {
-    total += p.value;
-  }
-  return total;
-}
-</pre>
-<h3>9.6 for statements</h3>
-<p>the for statement is the only looping construct; condition and step are
-both optional.</p>
-<pre>
-forstmt = &quot;for&quot; [ expr [ &quot;;&quot; expr ] ] compound .
-forwith = &quot;for&quot; &quot;with&quot; ident &quot;=&quot; expr &quot;;&quot; expr compound .
-</pre>
-<p>without a condition the loop is infinite. a step, separated from the
-condition by a semicolon, is evaluated after each iteration of the body
-and before the next condition check; it is the target of continue. break
-and continue exit the enclosing loop or proceed to its next iteration,
-and are not permitted outside a loop.</p>
-<pre>
-for i != 10; i += 1 {
-  tty.say i;
-}
-</pre>
-<p>a for with is the walking-alias form: it traverses a chain of pointers,
-binding ident to each pointee in turn. the seed (before the semicolon)
-and the advance (after it) are both pointer expressions — ^t or
-^t|none. the loop stops when the cursor reaches none. inside the body
-ident is a body-scoped, mutable alias of the current pointee: it reads
-and writes the node's fields directly (n.value, n.next), and cannot
-escape the loop (it is not addressable, and its name is gone after the
-body). the seed is evaluated once; the advance runs after each iteration
-and is the target of continue. crucially, both the seed and the advance
-are non-consuming reborrows — they read the pointer value without
-moving or taking it (6.4) — so the walked list stays singly-owned and
-structurally intact. walking a moved-dead list is rejected (7).</p>
-<pre>
-type node record { next ^node|none, value s64 }
-
-fn find bool (head ^node|none, v s64) {
-  for with n = head; n.next {
-    if n.value == v { return true; }
-  }
-  return false;
-}
-</pre>
-<p>because a for with borrows rather than moves, head is still usable after
-the loop — the walk leaves the list exactly as it found it. this is the
-preferred way to traverse an owned or borrowed list; assignment-based
-traversal (p = p^.next) instead takes each link (6.4, 9.5).</p>
-<h3>9.7 return statements</h3>
-<pre>
-return = &quot;return&quot; expr &quot;;&quot; .
-</pre>
-<p>the expression must be compatible with the declared return type. all
-registered defer actions run before the return completes (see 9.8).</p>
-<p>a function with no return type still requires an expression after
-return; the literal none, compatible with any no-result function, serves
-this purpose:</p>
-<pre>
-return none;
-</pre>
-<h3>9.8 defer statements</h3>
-<pre>
-defer = &quot;defer&quot; expr &quot;;&quot; .
-</pre>
-<p>a defer statement registers an expression to be evaluated at function
-return or at failure propagation, in last-in first-out order. at most
-eight defers are permitted per function.</p>
-<p>a deferred expression may not raise. it runs on the way out of the
-function — on a return, or with a failure already being carried — so a
-second failure raised there would have nowhere to go; a deferred
-function that can fail must discharge it with a handler of its own. the
-failure being carried is not visible to the deferred expression: it runs
-as ordinary code, and it is restored intact once the defers are done, so
-a handler downstream sees the failure the body raised.</p>
-<pre>
-fn open_and_read(path string) raises file.fault
-    var f file.id {
-  f = file.open path;
-  defer file.close f;
-  ...
-}
-</pre>
-<h3>9.9 raise statements and failure handlers</h3>
-<pre>
-failuredecl = &quot;failure&quot; ident
-              ( &quot;as&quot; qualident | &quot;{&quot; ident { &quot;,&quot; ident } &quot;}&quot; ) .
-raise     = &quot;raise&quot; qualident &quot;.&quot; ident &quot;;&quot; .
-handler   = &quot;on&quot; ( &quot;...&quot; [ &quot;with&quot; ident ] | failureref { &quot;|&quot; failureref } )
-            &quot;:&quot; stmts .
-failureref  = qualident [ &quot;.&quot; ident ] .
-</pre>
-<p>a failure declaration takes one of two forms, exactly as a type
-declaration does (6): the kind enumeration `{ ... }`, or an alias to
-another failure written with as. failure io as file.fault binds io as
-a second name for file.fault — the same failure under two names, not
-a copy. the two are fully interchangeable: either name may appear in a
-raise, in a raises clause, and in an on handler, and a kind raised under
-one name is discharged by a handler on the other. the alias borrows the
-target's kinds verbatim (io.not_found is file.fault.not_found) and
-takes no kind list of its own. the qualident that names the target is
-resolved as for any failure reference: a local failure unqualified, an
-imported one as m.fault. as elsewhere, the as is confined to the
-declaration.</p>
-<p>a failure is a closed enumeration of kinds. signatures name failures —
-a stable, coarse contract; raise statements name kinds — the precise
-cause; handlers name either. a signature thus records what can go wrong,
-not how: changing which kinds a body raises leaves callers untouched
-while its failure set holds.</p>
-<p>a failure declaration defines a failure by enumerating its kinds; the
-enumeration is mandatory and closed. a failure is module-local, exactly
-like a type: declared in some module, exported when it precedes the ...
-separator (11.1), and named from elsewhere as module.failure. within its
-declaring module it is named unqualified. the qualident that names a
-failure is resolved as for a type name (6): the first identifier, if it
-names an imported module, selects that module's failure; otherwise the
-failure is local. a trailing ident beyond the failure is its kind. the
-standard library declares each failure in the module whose operations
-raise it (appendix b.2) — core/file, core/heap, core/bytes,
-core/socket, core/boolean, aldos/machine — each declaring one failure
-named fault, so a path error is file.fault and a parse error
-bytes.fault. there are no predeclared, globally-visible failures; a
-module that raises or handles one imports its owner.</p>
-<p>a raise statement names a concrete kind by qualified name — the failure
-(optionally module-qualified) and then the kind. a bare failure is a
-compile-time error. it abandons the current function and marks that
-failure active; registered defers are replayed before control transfers.</p>
-<p>the raises clause names failures only, never kinds. the compiler
-computes the failure set from the body — a failure appears in raises if
-and only if at least one of its kinds can escape: each raise contributes
-its kind's failure, each call to a raising function contributes the
-callee's declared failures, each on handler removes what it discharges
-(a handler body may itself contribute new ones). it rejects any
-discrepancy at failure granularity: a failure propagated but not
-declared, or declared but never propagated, is an error. a function
-propagating no failure carries no raises clause; a bare raises is a
-syntax error.</p>
-<p>the unnamed failure (6.6) takes part in that computation as an ordinary
-member of the set, and is subject to the same exactness. a call to an
-open function contributes it, along with the failures that call names;
-it appears in the caller's clause if and only if it survives to the end
-of the body. so a body that calls an open function is itself open unless
-it discharges the unnamed failure, and a clause that carries ... over a
-body with nothing to relay is rejected as readily as a name that is
-never propagated. no raise statement produces it: a raise names a kind,
-and a kind belongs to a failure that has a name. it enters a body only
-by being relayed — through a call whose type carries it, or from an asm
-body, whose clause is trusted like any other.</p>
-<p>handlers stand at the end of a function body, after the statements and
-before the closing }. each handler is on, one or more `|`-separated
-references — each a whole failure or a concrete kind — a colon, and a
-statement sequence running to the next on or to the body's }; handlers
-share the body's closing brace. a kind handler discharges that kind; a
-failure handler discharges all its kinds. a specific kind handler and a
-general failure handler for the same failure may coexist: the kind
-handler is written first and wins for its kind, the failure handler
-catches the rest. handling every kind of a failure individually
-discharges the failure. a handler runs in the caller's frame; its
-completion converts the failure into a regular return. a failure raised
-in a handler body propagates, uncaught by a sibling handler. unhandled
-failures propagate to the caller.</p>
-<p>a handler written on ... is the unnamed handler, and it discharges every
-failure the body can propagate — the named ones and the unnamed one
-alike. it names no target: `on a | ...` and `on ... | a` are both
-rejected, since the name beside it could never be reached. it stands
-last, for the same reason: no handler after it could run. it tests
-nothing, so it is the one handler that costs no comparison; control
-falls into it from whatever the handlers above did not match.</p>
-<p>the unnamed handler may bind the failure it caught: `on ... with f`
-introduces f as a fresh name for that failure, of type mirror.fault_kind
-(11.3, appendix b.3). the name is bound as a with statement binds one
-(9.10) — it is in scope to the end of the handler, may shadow an outer
-name of the same name, and is read-only — and it is the only way to
-learn which failure ran when the head named none. only the unnamed
-handler binds: a named handler's head has already said which failure it
-caught, so there is nothing left to ask. the value is opaque; its
-operations live in mirror, and reading it as a number takes an explicit
-`as b64`.</p>
-<pre>
-fn describe string() {
-  attempt;
-on ... with f:
-  return mirror.fault_name_of f;
-}
-</pre>
-<p>a named handler discharges its own failure only, and never the unnamed
-one — the unnamed failure is by definition what no name accounts for.
-named handlers may therefore stand in an open body freely, in front of
-an unnamed handler or without one: they run first, taking the failures
-they name, and what is left keeps the clause open. this is the useful
-arrangement, since the whole point of naming a failure in an open
-signature is that a caller can handle that one by name:</p>
-<pre>
-fn eval(f fn () raises ...) raises file.fault | ... {
-  file.touch stamp;
-  f;
-}
-
-fn run() {
-  eval work;
-on file.fault.not_found:
-  say &quot;no stamp&quot;;
-on ...:
-  say &quot;the work failed&quot;;
-}
-</pre>
-<p>eval names the failure it raises itself and relays whatever work raises;
-run handles the one by kind and the rest with an unnamed handler, so run
-propagates nothing and carries no raises clause of its own.</p>
-<p>a failure value is a 32-bit word: the upper 16 bits hold the failure
-number, the lower 16 the kind number. the all-zero word means no failure
-active, so failure numbers start at 1; kind number 0 is reserved and
-never raised. failures are numbered in first-declaration order across
-the whole program, not stable across builds — a failure value does not
-outlive the process, and no failure number is an abi (appendix b.2). so
-a kind test is a full-word compare, a failure test a 16-bit shift and
-compare, and the no-failure test after a call a compare with zero.</p>
-<pre>
-fn parse_byte b8(s string) {
-  return byte.parse s;
-on bytes.fault:
-  return 0;
-}
-</pre>
-<p>here byte.parse may raise bytes.fault.invalid_format; the handler names
-the whole failure and discharges it, so the function propagates nothing
-and needs no raises clause. on bytes.fault.invalid_format would
-discharge only that kind.</p>
-<h3>9.10 with statements</h3>
-<p>a with statement binds a fresh name to the place a designator denotes,
-evaluating that designator's address exactly once at the statement.</p>
-<pre>
-with       = &quot;with&quot; ident &quot;=&quot; designator &quot;;&quot; .
-designator = atom { index | field | deref } .
-</pre>
-<p>it is a flat simple statement, terminated by its own semicolon — not a
-block form: there is no with-body. like a guard clause, the binding it
-introduces extends through the rest of the surrounding block. the
-right-hand side must be a designator (an lvalue): a variable, or a
-variable followed by index, field-selection, and dereference selectors.
-a literal, a call result, or an arithmetic or relational expression is
-rejected.</p>
-<p>the binding names the same storage as the designator; it is not a copy.
-while it is in scope it is the only way to that storage (6.4): any
-designator that overlaps the place — the same element, a part of it,
-the whole it is part of, or an element of the same array whose index is
-not a literal — is rejected, whether it reads, writes or passes it, and
-so is a second with over it. disjoint places stay reachable: with p =
-a[0] leaves a[1] and every other field usable. once the binding's block
-closes, a write made through it is visible through the original path.
-its static type is the designator's type, and its address is computed
-once, at the with: later uses of the name are plain accesses off that
-cached address, so index arithmetic is not repeated and the name keeps
-referring to the same element even if an index variable changes
-afterward.</p>
-<p>the name is in scope from the with statement to the end of the enclosing
-compound — exactly the scope of a local declared at that point. a with
-inside a nested compound is therefore out of scope after that compound
-closes; a with in the function body lasts to the end of the body. an
-inner with may shadow an outer name; two bindings of one name in the
-same compound are an error.</p>
-<p>the binding inherits the mutability of its base: it is an lvalue exactly
-when the designator is. a base that is a mutable variable, a variable
-(var) or out parameter, a writable dereference, or a component of one
-yields a writable name; an immutable parameter or any sub-location of
-one yields a read-only name, and a write through it is the same
-compile-time error, with the same message, as a write through the base
-path directly. there is no read-only modifier — the read-only case
-arises only from a read-only base.</p>
-<p>because the binding is a plain name of the designator's type, guard
-(9.5) and when (9.4) narrow it as they narrow any binding of union type.
-this is the way to narrow a union element: when and guard require a
-name, not a designator, and a union has no whole-value copy, so</p>
-<pre>
-with v = vs[i];
-when v {
-* u.a: ...
-* u.b: ...
-}
-</pre>
-<p>makes the element vs[i] a narrowable name without copying it.</p>
-<p>a designator ending in a slice (a[lo:hi]) yields a computed slice value,
-not a place, and so is not a valid with right-hand side.</p>
-<h2 id="10-function-declarations">10. function declarations</h2>
-<p>a function declaration associates a name with a signature, optional
-locals, and a body.</p>
-<pre>
-fndef     = [ &quot;inline&quot; ] &quot;fn&quot; ident signature
-            ( &quot;as&quot; qualident | &quot;...&quot; | { ( &quot;var&quot; | &quot;final&quot; ) vardefs } ( body | asmbody ) ) .
-body      = &quot;{&quot; [ stmts ] { handler } &quot;}&quot; .
-asmbody   = &quot;asm&quot; [ &quot;naked&quot; ] compound .
-</pre>
-<p>locals, when present, follow the signature introduced by the keyword var
-— a comma-separated list of name-and-type pairs, in which a run of
-names may share one type (7). the same var introduces module-level
-variables (7); here it introduces the activation frame's. the locals may
-be written as a comma-separated list after one var, as several var
-clauses, or any mix — the same form either scope accepts. a parameter
-list is not this list: its markers and variadic form are its own, so
-every parameter carries its own type. a clause headed final instead of
-var declares final locals (7.1), and the two kinds of clause mix in any
-order. a trailing ... in place of a body marks a deferred definition
-(10.3), whose body appears later in the same section; ... admits neither
-locals nor the inline marker. locals are allocated on the activation
-frame with natural alignment and are zero-initialised by the prologue. a
-local may be a bare ^t or address, or a record with non-null members,
-each born by assignment (the field-level birth rule, 7); it may not,
-however, be an untrackable aggregate — one with a non-null under an
-array element or a union payload, where per-member birth cannot be
-verified (as in bss, see 7).</p>
-<p>a function may not return an aggregate (array, record, slice, or union)
-by value; a variable (var) or out parameter is used instead.</p>
-<h3>10.1 formal parameters</h3>
-<p>a parameter is a binding, written ident type, optionally led by one
-marker keyword — var ident type or into ident type. scalars — bool,
-integers, f64, pointers, address — are passed by value; aggregates —
-arrays, records, slices, unions — by reference, regardless of the
-marker. a union subtype value may be supplied for a parameter of the
-parent union type (see 6.5). a parameter has one of three kinds:</p>
+<h3>3.3 Scoped constants</h3>
 <ul>
-<li>immutable (no marker): the binding may not be reassigned, and an aggregate passed by reference may not have its fields or elements written. the callee reads it. a slice parameter, or one read out of an aggregate parameter, is a view inside the function (6.2), so nothing it reaches is written, kept or handed back as writable: a function that returns part of its argument returns a const []t. this is what lets an immutable parameter take a view — a constant, a literal — as readily as a []t, so a function that only reads its argument needs no const written on it. a bare pointer parameter is a borrow — its value (and anything reached through it) is an alias that may not escape the callee (the alias rule, 6.4): it can be dereferenced, compared, re-borrowed, or aliased with with / for with, but not stored, returned, or taken.</li>
-<li>variable (var, written before the name): the call site supplies a writable lvalue marked var, and the callee reads and modifies the backing storage. a slice is how storage is handed to a function that writes it or keeps it writable, and a var []t parameter also takes a writable slice value — a subrange, a call's result — through a temporary, exactly as it takes an array: attach var b, var storage[0:16]. only the temporary is rebound. it is inout — the argument is valid on entry; it is an error to pass an unborn variable (a bare ^t/address before its birth, or a partially born aggregate) here, since the callee reads it (7). a var pointer parameter is a borrow too (its value cannot escape), though the callee may write a new owner into the slot, or take its optional value out with null (owned = p) — the mirror of from.</li>
-<li>out (into, written before the name): the callee builds the parameter. it starts unborn inside the callee — as a local of the same type would (7) — and the callee must birth it before any normal return; reading it first is barred. a bare ^t/address out parameter is born by assignment; a record out parameter by birthing each of its non-null leaves. the call site writes the argument as into ident, and it need not be born beforehand: a still-unborn variable is admitted and becomes born once the call returns (verified, since the callee is checked to initialise it). this is how a final record or array is born (7.1), and an into argument naming a final already born is a second write, rejected. a marker completely describes the kind, so a parameter carries at most one of var, into, from, or the variadic ....</li>
-<li>from (written before the name): the exact mirror of into — the callee consumes the parameter, taking ownership. the argument is valid on entry (like var, an unborn or partially-born argument is rejected — the callee reads it), and it is un-born once the call returns: for the rest of the caller's statement sequence, and on every following path, the binding is treated as unborn, so a second consume or any later use is the ordinary use-before-birth error (7). this gives compile-time double-free / use-after-consume checking with no flow analysis — the death, unlike a birth, is not scoped to a block but persists outward, conservatively marking the binding dead even where only one branch consumed it. from applies only to a parameter with a non-null leaf to consume (a bare ^t/address, or a record carrying one — a typical disposer takes from self). the argument's root binding must be owned by the calling function — a local, or an into/from parameter — since consuming a var or bare parameter would leave the caller's binding dangling; and it may not be consumed across a loop back-edge unless it was born inside that loop. because records are never copied, a resource aliases only through its own storage, which the birth machinery already tracks per leaf, so from needs no new ownership type — it reuses the born state, run backwards. move-on-assign (6.4) is the same death, run at an assignment rather than a call: q = p over an owned pointer consumes p exactly as a from argument would, sharing this machinery. a bare or var argument, a with alias (9.10), or a for with alias (9.6) is by contrast a non-consuming borrow — it reads the owner without ending its life.</li>
+<li>t.name = v, only for a distinct (from/affine) type t, only in t's own module under t's own name. The value must be admitted by t; type is t.</li>
+<li>Read as t.name or m.t.name (also through an alias of t) as an operand, constant or when label.</li>
+<li>Interface section = public, body = private.</li>
+<li>The namespace is t's alone: no fallback to t's base, to the module, or from b from t.</li>
 </ul>
-<p>the call-site marker must match the parameter kind: var feeds a variable
-parameter, into constructs an out parameter, from consumes a from
-parameter, and a bare argument an immutable one. no other pairing is
-admitted: a var, into, or from argument to a parameter of another kind
-is a mismatch, and var, into, and from each require a writable lvalue,
-so a read-only argument (a literal or an immutable binding) under any is
-rejected. a pointer parameter is the binding, not its pointee: the
-pointer may not be rebound, but writing through it (p^ = ..., p^.f =
-..., or passing var p^ to a variable parameter) reaches the shared
-mutable storage and is permitted (6.4). to share a writable buffer,
-then, pass a plain ^t — var is needed only to rebind the caller's
-pointer itself.</p>
-<p>no two arguments of one call may overlap (6.4) when either of them may
-be written by the callee. a var, into or from argument may be written;
-so may a plain ^t argument, whose pointee is the callee's to write. so
-g var p, var p; and g var a[i], var a[j]; are rejected, as is g var r,
-r.f; where r.f is a record, an array, a union or a slice, which the
-callee would read by reference while writing r. a scalar argument is a
-copy and never overlaps: g var r, r.n; is admitted, and so are g var
-r.x, var r.y; and g var a[0], var a[1];. a nested call has finished
-before the outer one starts, so g var e, (h var e); is admitted. to hand
-a callee two elements of one array chosen at run time, pass the array
-and the two indexes.</p>
-<p>the last parameter may carry a ... marker before its type, written ...t.
-the marker is a property of the declaration, not of the function type —
-exactly as inline is (10.2): the parameter's type is the slice []t, and
-in the body it is an ordinary, immutable []t (it supports length,
-indexing, and for iteration like any slice). only one parameter may be
-variadic and it must be last; ... and the var/into/from markers are
-mutually exclusive; and the element type t must support assignment —
-scalars (bool, the integers, f64, address, and pointer types) and
-slice types (including string) are admitted, as is a liftable union
-(6.5), while record, array, enumeration, and non-liftable union element
-types are rejected. a slice element is admissible because assigning a
-slice copies its (address, count) pair, not the viewed elements; a
-liftable-union element is admissible because each pack slot is filled by
-lifting its argument (8.2.5) rather than by a whole-union copy.</p>
-<p>the marker changes only how a call that names the function is checked.
-after the fixed parameters are bound positionally, the trailing
-arguments form the variadic parameter in one of two ways. in the direct
-form a single trailing argument whose type is the slice []t (or an array
-of t, which converts to it as usual, 6.2) is passed as the slice itself,
-with no wrapping; this forwards an existing slice. otherwise the pack
-form applies: zero or more trailing arguments, each
-assignment-compatible with t under the usual argument conversions, are
-evaluated left to right and stored into an array built on the caller's
-activation frame, and a slice over that array — its address and the
-element count — is passed. the two forms cannot collide, since an
-argument would have to be both a t and a []t, which requires t = []t, an
-unconstructible type. zero trailing arguments are legal and yield the
-empty pack, a slice of count 0 and data address none. when t is a
-liftable union, each pack slot is union-sized and is filled by lifting
-its argument — a tag and the (possibly converted) payload (8.2.5) — so
-a call may mix argument types freely and the callee sees an ordinary []u
-to narrow and read; the direct form still forwards an existing []u
-slice.</p>
-<p>the array backing a pack lives in the caller's frame, so recursion and
-nested calls are safe and a call site reused in a loop reuses the same
-storage; like any by-reference argument, the callee must not retain the
-slice past the call. a missing final slice argument to a function
-without the marker remains an arity error. a call through a function
-value (a variable or parameter of function type) is unaffected by the
-marker, which the value's type does not carry, and always takes the
-slice form.</p>
-<h3>10.2 inline functions</h3>
-<p>a function declared with a leading inline — `inline fn name ...` — is
-expanded at the call site. inline is a property of the declaration, not
-of the function type (a value cannot be typed inline, and an inline
-function cannot be aliased or pointed to), so it precedes `fn` rather
-than sitting in the signature beside raises. an inline function may not
-declare locals and may not contain return, defer, raise, for, break, or
-continue, nor an on handler: a handler unwinds through a frame of its
-own, which the expanded copy does not have. a call to a raising
-function, however, is permitted, under a raises clause naming the
-callees' faults exactly as any body's calls oblige (9.9): the fault
-skips the rest of the copy and carries into the expansion site, where
-the surrounding function handles or propagates it under the ordinary
-rules — calling an inline function obliges the caller exactly as if the
-body's raising calls stood in its place. a thin typed adapter over a
-raising worker so costs nothing: expanded, it is the worker's call. an
-inline asm body (10.4) carries no raises clause, as no asm body does.
-an inline function may be open (6.6) like any other —
-it relays what it calls — but the unnamed handler is a handler, and so
-stays barred from an inline body along with the rest.</p>
-<p>an inline body has no out-of-line entry: it ends in a frame pop, and the
-copy falls through into the expansion site rather than returning, so
-there is no address a call could jump to and come back from. an inline
-function therefore may not be referenced other than by expansion. it may
-not be taken as a value, and it may not be called before its definition
-is read — neither through a prototype (10.3) nor, since a function name
-binds only after its body, from within its own body. an inline function
-cannot be recursive: direct self-recursion does not find the name at all,
-and reaching it through a forward declaration is rejected where the
-marker meets the earlier reference. the forms this bars are exactly the
-ones that would need a return the body does not have; a prototype whose
-definition is inline stays legal so long as nothing referenced it in
-between, which is how a module exports one (11.1).</p>
-<h3>10.3 forward declarations</h3>
-<p>a signature without a body binds the name to a function value with no
-code address. a later definition with an identical signature patches the
-binding with its address, frame size, and inline flag; a definition with
-a different signature replaces the binding entirely. such a body-less
-declaration takes one of two forms, by section. in the interface section
-(before the ... separator, 11.1) a function declaration is always
-signature-only — a prototype — and carries no marker: the next
-declaration delimits it as for any other declaration, and an inline
-marker written there is rejected rather than dropped — the prototype has
-no body to expand, and the definition below the separator carries it. in the body
-section a definition carries a body, so a forward declaration — a
-deferred definition, its body given later in the section — is written
-with a trailing ... in place of the body. this lets a group be defined
-in calling order: declare them with ..., then define them from top to
-bottom. a body-less signature without ... in the body section is
-incomplete, not a declaration — the same condition the interactive
-prompt reads as &quot;continue on the next line&quot;.</p>
-<p>the deferred definition of an open function therefore ends in two of
-them, `fn f() raises ... ...`, and they are read left to right without
-ambiguity: the first follows raises (or a `|`) and closes the clause
-(6.6), the second follows a complete signature and defers the body.</p>
-<p>a signature followed by as target is neither — it is a function alias,
-the function analogue of a type alias (type x as y, 6) or a failure
-alias (failure b as a, 9.9). it binds the name to an existing function:
-a local function or, qualified, an imported one (m.f). no body follows;
-the target supplies the code. the target must already be defined — a
-function alias copies the target's function value, so a not-yet-defined
-prototype, having no code, cannot be aliased. the written signature must
-equal the target's exactly (return type, parameters, their var and into
-markers, and the raises set), and the variadic marker must agree. inline
-and aliasing do not combine in either direction: an inline function
-cannot be a target (it has no out-of- line entry to forward to), and an
-alias may not itself be marked inline (the marker has no meaning on a
-forwarding binding — it is rejected, not ignored). because the alias is
-a complete binding, no definition for it appears in the body section. an
-interface-section prototype with as names an imported function and so
-re-exports it (11.1); a local target, undefined while the interface is
-read, is aliased in the body section or at the prompt.</p>
-<h3>10.4 assembly bodies</h3>
-<p>a body may be replaced by an asm block, passed verbatim to the rv64
-assembler. the assembly syntax is outside the scope of this report.</p>
-<p>by default the prologue and epilogue are emitted around the block. when
-the block needs no frame — it refers to neither fp nor ra, and the
-function has no locals, no with, and no by-reference parameter copies —
-they are dropped: the function is a frameless leaf, arguments stay in
-the argument registers, and a single ret is appended.</p>
-<p>the optional naked marker — a contextual word, recognised only directly
-after asm — forces the frameless form even when the block does use fp
-or ra. a naked body owns its frame end to end: it saves and restores ra
-and sp itself and supplies its own ret (or a tail jump to another
-context), so the compiler emits no prologue or epilogue that would
-corrupt it. this is the form a context switch needs. a naked body still
-admits no locals or with.</p>
-<p>an asm body cannot raise, and a signature with an asm body carries no
-raises clause. the compiler computes every raises clause from the body
-it compiled (9.9), and it has not compiled this one; nor could the
-assembly set the failure register honestly, since a failure number is
-assigned in declaration order and is no abi. an operation that can fail
-returns a status from the asm and is wrapped by an ordinary function
-that raises on it — the shape the firmware trampolines in
-aldos/machine take.</p>
+<h2 id="4-types">4. Types</h2>
+<ul>
+<li>x as y: transparent alias, same type everywhere (structure included). Two aliases of one target are one type.</li>
+<li>x from y: distinct nominal type, y's representation, compatible only with itself; crossing to/from y or another distinct type needs as. Integer literals still coerce to it; an operator on two values of it yields it. from on a union subtype is rejected.</li>
+<li>x affine y: distinct as from, plus affine (single owner). y is an integer type (int, byte, hword, word, dword) or a distinct/affine type over one.</li>
+<li>x y (bare typename, no marker) is rejected. Structural RHS takes no marker: x record {...}, x enum a | b, x union ..., x [n]t, x []t, x ^t.</li>
+<li>A function type is named through as: x as fn () -&gt; int. x fn ... declares a function (8).</li>
+<li>No keyword opens the declaration: the token after the name tells a type (a marker or a structure) from a constant (=).</li>
+<li>At the prompt record, enum, union and affine after a name always open a type. as, from, [ and ^ also continue an expression (x as int, f from p), so with those the line is a type only when the name is unbound or already a type.</li>
+<li>Markers appear only in the declaration; elsewhere a named type is written bare.</li>
+<li>A named type may refer to itself only through a pointer.</li>
+<li>typename: ident, m.t, u.v or m.u.v (union subtype).</li>
+</ul>
+<h3>4.1 Basic types</h3>
 <pre>
-fn nop () asm { nop }
-fn task_switch (var from context, var to context) asm naked { ... }
+type     size  align  meaning
+bool     1     1      logical
+byte     1     1      8-bit field, unsigned; the byte
+hword    2     2      16-bit field, unsigned
+word     4     4      32-bit field, unsigned
+int      8     8      signed integer
+dword    8     8      64-bit field, unsigned
+double   8     8      IEEE-754 double
+address  8     8      raw address, non-null
+string                alias for []byte
+integer               type of an unconverted literal
 </pre>
-<h3>10.5 predefined functions</h3>
-<p>four names are predefined in every module. b stands for a bool, x for an
-array or slice. they are the whole of the built-in vocabulary beyond the
-primitive types — everything once provided as a compiler intrinsic
-(printing, conversion, allocation, the math and i/o procedures) is now
-an ordinary standard-library function reached through a module (appendix
-b), and console output in particular is tty.say / tty.sayin / tty.ask
-from the tty module rather than a builtin.</p>
+<ul>
+<li>No other unsigned type. The bit types byte, hword, word and dword (RISC-V widths): unsigned ordering, division, mod; bit indexing. byte, hword, word are loaded zero-extended, held zero-extended after every operation, and stored as exactly their own bytes.</li>
+<li>These names are reserved (2).</li>
+<li>address is non-null: shares the zeroed-storage bans and the birth rule.</li>
+</ul>
+<h3>4.2 Arrays and slices</h3>
+<ul>
+<li>[n]t: n a positive int constant; contiguous; aligned as t. []t: {data address, count}, 16 bytes, align 8.</li>
+<li>[n]t converts implicitly to []t (assignment, argument, as).</li>
+<li>const []t is a view: elements read-only, subranges and slices read out of it are views (const []string is const []const string). const applies only to slice types. []t -&gt; const []t implicit; never the reverse (an as of a view yields a view).</li>
+<li>Views are: constants, nonempty string literals, plain parameters (inside their function), anything read out of a read-only place (constant, plain parameter, with alias of one, element of a view), and any slice over a read-only place (subrange, array-&gt;slice, byte view). A view cannot go into a []t binding/field/module var, be returned as []t, or passed var/into as []t.</li>
+<li>Element types may not be non-null (^t, address) or contain one; use ^t|none or int.</li>
+<li>Frame rule: a slice over a local array (and anything derived: subranges, byte views, slice locals assigned one, slices through a with alias of a local) may not be returned, stored in a module var, a var/into parameter, or a field reached through a pointer. It may be read, indexed, passed, stored in another local or a field of a local record. Slices over parameters, module storage or heap are free to escape.</li>
+</ul>
+<h3>4.3 Records</h3>
+<ul>
+<li>Fields in order, natural alignment; record aligned to its strictest field. A run of names may share one type.</li>
+<li>Non-null fields (^t, address) are leaves (5.1).</li>
+</ul>
+<h3>4.4 Pointers</h3>
+<ul>
+<li>^t non-null, ^t|none optional (none = address 0). Both 8 bytes.</li>
+<li>^t|none: assignment, == / != (none or same base), guard. Nothing else.</li>
+<li>p^ (^t only) is a writable place, even through an immutable parameter or field.</li>
+<li>Owners: ^t, ^t|none, address, affine values.</li>
+<li>Assigning a whole owned binding (local, from/into parameter) moves it: the source dies.</li>
+<li>An optional place not owned outright (field, var parameter) is taken with null: left none.</li>
+<li>A non-optional owner is never extracted from an aggregate slot; borrow it with with / for with.</li>
+<li>Borrow: an owner read from a bare or var parameter, a with / for with binding, or reached through one. Dereferenced, compared, passed bare/var, re-aliased; never stored, returned, moved or consumed.</li>
+<li>Comparing, bare/var arguments, with / for with never consume. Dropping a live owner is allowed. Use after move and double ownership are errors.</li>
+<li>Exclusivity: a place is a variable plus selectors. Two places overlap unless their paths diverge (a.x / a.y, a[0] / a[1]); a[i] with non-literal i overlaps every a[...]. Enforced by the argument rule (8.1) and the with rule.</li>
+</ul>
+<h3>4.5 Enumerations and unions</h3>
+<ul>
+<li>enum a | b | ...: at least one variant, stored as byte, nominally distinct.</li>
+<li>union v1 {fields} | v2 | ...: tag at offset 0, payload after it, sized/aligned to the largest variant.</li>
+<li>u.v is a subtype: size/align of u, tag fixed to v, only v's fields reachable. A u variable exposes no fields until narrowed by guard or when.</li>
+<li>u.v -&gt; u only in argument position (by reference). Reverse conversion, subtype-to-subtype assignment and whole-union assignment are rejected.</li>
+<li>Liftable union (inferred, never declared): every variant has exactly one payload field and the field types are pairwise distinct. Others are just not liftable; no diagnostic at the declaration.</li>
+</ul>
+<h3>4.6 Function types</h3>
+<ul>
+<li>fn (params) [-&gt; ret] [! ...]. No ret = returns nothing. The arrow ends a signature without a result: newlines end nothing, so start fn () cannot take the next declaration's name as its result type.</li>
+<li>The failure clause, ! a | b, names failures (never kinds), |-separated, and is part of the type. A raising value is callable only where its failures are declared or handled.</li>
+<li>... (the unnamed failure) may close the clause, alone or after names; nothing follows it. Such a type is open, others closed.</li>
+<li>A function value converts to an open type that agrees on params, markers and result, whatever it raises. Never the reverse. A closed type accepts only itself.</li>
+<li>inline and the variadic ... are declaration properties, not part of the type; a variadic param enters the type as []t.</li>
+</ul>
+<h2 id="5-variables">5. Variables</h2>
+<ul>
+<li>var/final heads a comma list of vardefs; trailing comma allowed; a run of names shares the type that ends it.</li>
+<li>Module vars live in BSS; locals in the frame; both zero-initialised.</li>
+<li>No variable of a type with a non-null under an array element or union payload, nor a module ^t whose pointee holds a leaf.</li>
+</ul>
+<h3>5.1 Birth rule</h3>
+<ul>
+<li>^t, address, affine and slice locals start unborn. Born by assignment or an into argument; usable after a birth earlier in the same or an enclosing sequence, until that sequence ends. Conditional birth uses the if expression. An empty slice is &quot;&quot; or a[0:0].</li>
+<li>^t|none starts as none; only a moved one is dead.</li>
+<li>Death: a moved or from-consumed owner is dead until reassigned, on every following path.</li>
+<li>A record holding any of these (a leaf, at any depth) is born whole: by a record expression (7.1) or as an into argument. While unborn: no use of it or of any part holding a leaf; a leaf-free part is usable.</li>
+<li>A ^rec assigned an address points at an unborn record, born by p^ = {...} or into p^.</li>
+<li>into: the callee births the argument before a normal return. var: the argument is born.</li>
+<li>Untracked: no non-null under an array element or a union payload; a slice there starts empty.</li>
+<li>No unborn-capable local in an on handler.</li>
+<li>Module vars of these types are born for good in setup's outermost sequence, above every use. While a birth pends there: no early return, no call that may reach code defined below. A birth after a raising call only if the fault leaves setup, which then has no on handler. At the prompt the top level is setup, and no birth follows a raising call.</li>
+<li>A module ^t or affine value is used in place: deref, plain argument; never copied, returned, moved or consumed.</li>
+</ul>
+<h3>5.2 Final variables</h3>
+<ul>
+<li>final = write-once var, at module scope or among locals (final and var clauses mix).</li>
+<li>Every final starts unborn; born by assignment to the bare name or an into argument (the only way for a record/array). Field or element writes are not births. Birth is positional as above; in a loop body it is made afresh each iteration. Module finals are born in setup's outermost sequence.</li>
+<li>After birth: assignment, +=, -=, bit store, var argument, second into argument, write through a with alias — all rejected.</li>
+<li>No birth in a for step, a defer, or an on handler. A local final may not be used in a handler.</li>
+<li>A final scalar/record/array/union is read-only. A final slice or pointer cannot be rebound but its elements/pointee stay writable as its type allows. An owned final pointer may still be moved or consumed (its death, never reborn). Module finals are never moved or taken with null. Imported finals are fixed.</li>
+</ul>
+<h2 id="6-expressions">6. Expressions</h2>
+<ul>
+<li>Postfix: index, subrange, field, deref combine freely; a trailing argument list makes a call.</li>
+<li>a[lo:hi]: slice over the same storage, lo inclusive, hi exclusive; on a bit type a bit field.</li>
+<li>fn atom...: a function value (never a call); the designator must be of function type.</li>
+<li>A type name used as an operand is its size in bytes (int), so heap.claim node passes node's size.</li>
+<li>No bounds checks.</li>
+</ul>
+<h3>6.1 Precedence (high to low)</h3>
 <pre>
-name                  arguments        result   function
-length (x)            array or slice   s64      element count
-not (b)               bool             bool     negation
-and (b0, b1, ...)     bool             bool     short-circuit conjunction
-or  (b0, b1, ...)     bool             bool     short-circuit disjunction
+postfix     call, index, field, deref
+cast        as
+unary       -
+multiply    *  /  mod
+add         +  -
+relation    ==  !=  &lt;  &lt;=  &gt;  &gt;=   (non-associative)
+assign      =  +=  -=              (non-chaining)
 </pre>
-<p>these names are forms known to the compiler, not functions: their
-signatures — variadic, or generic over the argument type — are not
-expressible as almac function types, and the names do not denote
-function values. the sole exception is not, an ordinary function. and
-and or additionally evaluate lazily (see 8.2.1).</p>
-<h2 id="11-modules">11. modules</h2>
-<p>a module is the unit of compilation and of namespacing.</p>
+<ul>
+<li>Arithmetic and relational operands must have the same type after implicit conversion; a distinct type matches only itself.</li>
+</ul>
+<h3>6.2 and, or, not</h3>
+<ul>
+<li>and / or are forms (at least one argument, not values): over bool, left-to-right short-circuit, yield bool; over integers, bitwise over all arguments, all evaluated. One family per form; integer arguments share one exact type, an untyped literal adopts it.</li>
+<li>not is an ordinary function: logical on bool, bitwise complement within the operand's width on integers.</li>
+<li>length (x): element count of an array or slice, int.</li>
+<li>ram_base: untyped constant, where target memory starts (0x80000000 on aldan/RISC-V, 0 elsewhere).</li>
+<li>These, plus the primitive types, are the whole built-in vocabulary.</li>
+</ul>
+<h3>6.3 Arithmetic</h3>
+<ul>
+<li>+ - * / on integers and double; mod on integers; unary - on integers and double.</li>
+<li>Integers wrap: mod 2^64 (int), mod 2^n (bit types). No overflow failure. On bit types unary - is 0 - x.</li>
+<li>/ and mod: signed on int (truncate toward zero, mod takes the dividend's sign), unsigned on bit types.</li>
+<li>x / 0 = -1 (all ones on bit types), x mod 0 = x (RV64). double follows IEEE-754.</li>
+</ul>
+<h3>6.4 Bit fields</h3>
+<ul>
+<li>b[i] (bool) and b[i:j] (bits i..j-1, b's type) on bit types; bit 0 least significant. Out-of-width bits read 0.</li>
+<li>Both are places when b is a place: b[i] = bool, b[i:j] = v (v truncated to the field); other bits unchanged. Bounds evaluated once.</li>
+</ul>
+<h3>6.5 Relations</h3>
+<ul>
+<li>Same type, bool result. double IEEE ordering; int and integer signed; bit types unsigned.</li>
+<li>Pointers: == / != only, same base (^t and ^t|none mutually); a ^t compared against none is an error.</li>
+</ul>
+<h3>6.6 Conversions</h3>
+<p>Explicit (x as t):</p>
+<ul>
+<li>integer -&gt; integer: to a narrower bit type keeps its low bits; widening sign-extends from int, zero-extends from byte, hword, word.</li>
+<li>integer &lt;-&gt; double: reads the integer by its family (bit types unsigned); double -&gt; integer truncates toward zero, then to a narrow bit type keeps its low bits.</li>
+<li>any scalar -&gt; bool (non-zero is true).</li>
+<li>[n]t -&gt; []t.</li>
+<li>aggregate or slice -&gt; []byte: byte view of its storage, length = byte size. Needs addressable backing (bare scalar values rejected). Never implicit.</li>
+<li>[]byte or [n]byte -&gt; []t: same storage, count = bytes / size of t (partial tail dropped).</li>
+<li>[]byte -&gt; scalar: unaligned load of the leading bytes.</li>
+<li>The two conversions out of bytes may not target a type holding a pointer, address or affine value at any depth.</li>
+<li>pointer (either kind) -&gt; address.</li>
+<li>address -&gt; ^t: asserts the typing; t's leaves are unborn (5.1).</li>
+<li>integer -&gt; address: the trusted forge.</li>
+<li>address -&gt; integer.</li>
+<li>^t -&gt; ^t|none.</li>
+<li>distinct &lt;-&gt; its base, and between distinct types of one representation (no runtime cost beyond the base).</li>
+<li>affine &lt;-&gt; its base (into = forge, out = non-consuming read); never affine &lt;-&gt; affine.</li>
+<li>A conversion of a view yields a view.</li>
+<li>Rejected: cast to a union subtype; a non-null pointer except from address or a same-base ^t; a cast to the operand's own type (an alias counts as the same type; an untyped literal is not yet typed, so 0 as byte is fine). Narrowing is only by guard / when.</li>
+</ul>
+<p>Implicit (assignment, argument, comparison):</p>
+<ul>
+<li>integer literal, or an expression of untyped constants only (3), -&gt; the integer type it meets (never address, never affine). Bare, it defaults to int.</li>
+<li>[n]t -&gt; []t where a slice is required.</li>
+<li>none -&gt; ^t|none; ^t -&gt; ^t|none.</li>
+<li>address &lt;-&gt; any pointer (typing assertion only).</li>
+<li>[]t -&gt; const []t.</li>
+<li>u.v -&gt; u in argument position.</li>
+<li>Value-to-union lift, arguments only: parameter of a liftable union u, argument not u or a subtype. Variant chosen by exact field type first, then by implicit convertibility (literal -&gt; integer, [n]t -&gt; []t). A bare literal is int first. Zero or several matches at one level is an error; lifting into a non-liftable union is an error. A temporary {tag, payload} is built at the call site and passed by reference.</li>
+</ul>
+<h2 id="7-statements">7. Statements</h2>
+<ul>
+<li>Simple statements (expr, return, defer, raise, break, continue, guard, with) end in ;. if, when, for end at their } with no ;. Braces are never elided. A function body's } is distinct from its last statement's.</li>
+<li>An ifexpr used as an expression statement ends in ;.</li>
+</ul>
+<h3>7.1 Assignment</h3>
+<ul>
+<li>An expression yielding the RHS; no chaining.</li>
+<li>LHS: variable, or a place by index, field, deref, bit field.</li>
+<li>Arrays are not assignable whole. A slice assignment copies {data, count}. += and -= are for scalars.</li>
+<li>A record takes a record expression, r = {f: v, g: {h: w}}: named fields, any order, once each; nested braces for a record field; no array or union field. Each field is stored as r.f = v, left to right. Left out is zero. Every field holding a leaf (5.1) is given.</li>
+<li>A field may be built in place by a call with a hole, f: (make into, x): an into with no argument after it is the field. One hole per entry, outside any branch; the call returns nothing. This is how a record field is given other than by nested braces.</li>
+<li>A call with arguments as a value is parenthesised when an entry follows: its list would take the entry.</li>
+<li>Only as the RHS of =: no operand, no temporary. The place is a whole binding, p^ of a born ^rec, or a born part; never a part of an unborn record.</li>
+</ul>
+<h3>7.2 Calls</h3>
+<ul>
+<li>Arguments follow the callee without parentheses; the list ends at the first token that is not a comma, an argument marker, or an atom start (literal, qualident, fn, &quot;(&quot;).</li>
+<li>An argument is an atom plus non-call postfixes: f a + b is (f a) + b; f a[i], f a.x.y, f a^.x pass the place. Composite arguments are parenthesised.</li>
+<li>Arguments are evaluated left to right before the call.</li>
+<li>A bare function designator is always a zero-argument call, except as the LHS of an assignment or a var/into argument. A function value is written fn d.</li>
+<li>Callable: a named function, or any value of function type — a variable, a parameter, a field, an element, a pointee. A bare designator of function type is a call wherever it stands (r.f a, b; fs[i] 3; p^.step); its value is fn d.</li>
+<li>Marker must match the parameter kind (see 8.1).</li>
+<li>Calling a raising function contributes its failures to the caller.</li>
+</ul>
+<h3>7.3 If</h3>
+<ul>
+<li>Condition is bool; every branch is braced; else-if chains.</li>
+<li>As an expression it needs else; all branches yield one type; a branch yields its last statement's value.</li>
+</ul>
+<h3>7.4 When</h3>
+<ul>
+<li>Scrutinee evaluated once: int, a bit type, enum, or union.</li>
+<li>Labels are compile-time values of the scrutinee type: enum -&gt; its variants or constants of it; others -&gt; integer/hex literals and integer constants, byte also characters. A typed constant matches only its own type. On byte, hword, word a label must fit the width. Labels distinct.</li>
+<li>First matching case runs; no fallthrough; no empty case body; shared labels use one comma list. * else is last.</li>
+<li>Enum: exhaustive or else, otherwise rejected. Other integer types: unmatched without else does nothing.</li>
+<li>Union: scrutinee must be a plain variable (local, parameter, module var); each label is one subtype u.v, narrowing the variable for that case; exhaustive or else; in else it stays u.</li>
+<li>Every case starts with *.</li>
+</ul>
+<h3>7.5 Guard</h3>
+<ul>
+<li>guard x u.v | escape; narrows union x to u.v for the rest of the block, else takes the escape.</li>
+<li>guard p | escape; narrows ^t|none p to ^t. p must be live (guarding a moved-dead optional is rejected).</li>
+<li>escape: return arg, raise f.kind (failure must be in the ! clause), break or continue (inside a loop only).</li>
+<li>Narrowing ends with the block, or when x is assigned a value of its declared type.</li>
+</ul>
+<h3>7.6 For</h3>
+<ul>
+<li>for [cond [; step]] { }: no cond = infinite. step runs after the body and is continue's target. break and continue only inside a loop.</li>
+<li>A for with no cond and no break of its own (a guard escape included; a nested loop's does not count) never falls out: as a body's last statement it is no fall-through (8).</li>
+<li>for with n = seed; advance { }: seed and advance are ^t or ^t|none; stops at none. n is a body-scoped mutable alias of the pointee, not addressable. Seed once; advance after each iteration (continue target). Both are non-consuming reborrows. Walking a moved-dead list is rejected.</li>
+</ul>
+<h3>7.7 Return</h3>
+<ul>
+<li>return expr; always has an expression (none for no-result functions), compatible with the return type.</li>
+<li>Defers run before return completes.</li>
+</ul>
+<h3>7.8 Defer</h3>
+<ul>
+<li>Registers an expression run at return or failure propagation, LIFO. At most 8 per function.</li>
+<li>A deferred expression may not raise. The carried failure is invisible to it and restored after.</li>
+<li>A from argument in a defer consumes at each exit, not at the defer; moving the owner before an exit is a use after death.</li>
+<li>Defers run after an implicit result is computed and must not disturb it.</li>
+</ul>
+<h3>7.9 Failures</h3>
+<ul>
+<li>f failure { k1, k2, ... }: closed, mandatory kind list. The name comes first, as a type's does; failure follows it. g failure as f: alias, same failure and kinds, no own list. Module-local, exported before ..., named m.f from outside. No predeclared failures.</li>
+<li>raise f.k; / raise m.f.k; names a kind (a bare failure is an error); abandons the function after replaying defers.</li>
+<li>Exact clause: the compiler computes the escaping set (raises add kinds' failures, calls add callees' declared failures, handlers remove what they discharge, handler bodies may add). A failure escaping but not declared, or declared but not escaping, is an error. No failures = no clause; a bare ! is a syntax error.</li>
+<li>The unnamed failure joins the set only via calls of open functions (or an asm body's trusted clause); never via raise. Exactness applies to it too.</li>
+<li>Handlers stand at the end of a body, sharing its }. on ref | ref ...: stmts; ref is a failure (all kinds) or a kind. Kind handlers before a failure handler of the same failure win for their kind. Handling every kind individually discharges the failure. A handler runs in the function's frame; completing it is a normal return. A failure raised in a handler body propagates (not caught by siblings).</li>
+<li>on ...: discharges everything, named and unnamed; must be last; cannot be mixed with names. Named handlers never discharge the unnamed failure.</li>
+<li>on ... with f: binds f, read-only, scoped to the handler, of type mirror.fault_kind (10.1). Only the unnamed handler binds.</li>
+<li>Representation: 32-bit word, failure number in the high 16 bits (from 1, in first-declaration order across the program, not stable), kind number in the low 16 (from 1). 0 = no failure. Kind test = word compare, failure test = shift + compare.</li>
+</ul>
+<h3>7.10 With</h3>
+<ul>
+<li>with n = designator; binds n to the place (not a copy), address computed once. Scope: to the end of the enclosing compound. Shadowing an outer name is fine; two of one name in one compound is an error.</li>
+<li>Designator: a variable plus index/field/deref; not a literal, call, operator expression or subrange.</li>
+<li>While n is live, any designator overlapping its place (same element, part, whole, same array with a non-literal index) and a second with over it are rejected. Disjoint places stay usable.</li>
+<li>n is writable exactly when the designator is.</li>
+<li>guard and when narrow n like any binding (the way to narrow a union element).</li>
+</ul>
+<h2 id="8-functions">8. Functions</h2>
+<ul>
+<li>name fn signature (name inline fn for an inline one), then any number of var/final local clauses, then a body or an asm body. ... instead marks a deferred definition (no locals, no inline); as m.f makes an alias.</li>
+<li>At the prompt name fn also starts a call passing a function value (apply fn double, 3). It is a definition when ( follows fn: a signature opens with its parameters.</li>
+<li>Locals: frame, natural alignment, zeroed by the prologue; at most 64 (implementation limit).</li>
+<li>Implicit return: when the body falls through, its trailing expression statement is the result; it must convert to the return type and obeys the frame and alias rules like return. Every into parameter must be born on fall-through too. A body ending in raise, break, continue or an endless for (7.6) does not fall through.</li>
+<li>No aggregate (array, record, slice, union) returned by value except a slice; use var or into otherwise.</li>
+</ul>
+<h3>8.1 Parameters</h3>
+<ul>
+<li>Scalars (bool, integers, double, pointers, address) by value; aggregates (arrays, records, slices, unions) by reference whatever the marker.</li>
+<li>Plain: immutable binding; aggregates unwritable; a slice (or one read out of an aggregate parameter) is a view; a pointer is a borrow. Takes views and literals.</li>
+<li>var: inout; the argument is a writable lvalue marked var and fully born. A var []t also takes a writable slice value (subrange, call result) via a temporary. A var pointer is a borrow; the callee may store a new owner into it or take its optional value with null.</li>
+<li>into: out; unborn in the callee, must be born before any normal return, not read first. The argument need not be born and is born after the call. A second into on a born final is rejected.</li>
+<li>from: consumes. Argument born on entry, dead after the call for the rest of the sequence and all following paths. Only for a type with a leaf to consume (^t, address, affine, or a record holding one); not for a slice. A ^rec passed to a from address parameter need not have its leaves born. The root binding must be owned (local, into/from parameter). No consumption across a loop back-edge unless born in that loop.</li>
+<li>One marker per parameter (var, into, from or ...). The call-site marker must equal the parameter's; var/into/from need a writable lvalue.</li>
+<li>Writing through a pointer parameter (p^ = .., var p^) is allowed; only rebinding is barred.</li>
+<li>Argument overlap: no two arguments of one call may overlap when either may be written (var, into, from, or a plain ^t). Scalar arguments are copies and never overlap. A nested call completes before the outer.</li>
+<li>Variadic: last parameter ...t, type []t, immutable. t: scalars, pointers, address, slices, or a liftable union; not record, array, enum, non-liftable union. Call forms: direct (one trailing []t or [n]t argument passed as is) or pack (zero or more t-compatible arguments stored left to right into a caller-frame array; empty pack = count 0, data none). With a liftable union t each slot is lifted. Calls through a function value always take the slice form.</li>
+</ul>
+<h3>8.2 Inline functions</h3>
+<ul>
+<li>name inline fn: expanded at the call site.</li>
+<li>No locals, return, defer, raise, for, break, continue or handlers. Calls to raising functions are allowed under an exact ! clause; the fault skips the rest of the copy into the caller. May be open.</li>
+<li>Not a value, not an alias target, not callable before its definition (no prototype use, no recursion). A prototype whose definition is inline is legal if not referenced in between (this is how one is exported).</li>
+</ul>
+<h3>8.3 Forward declarations and aliases</h3>
+<ul>
+<li>A body-less signature binds the name with no code. A later definition with an identical signature patches it (address, frame, inline flag); a different signature replaces the binding.</li>
+<li>Interface section: prototypes only, no ... marker, no inline. Body section: forward declaration is signature + ...; a body-less signature without ... is incomplete.</li>
+<li>f fn () ! ... ... : first ... closes the clause, second defers the body.</li>
+<li>f fn sig as target: alias of an already-defined function (local or m.f); signature (result, params, markers, clause, variadic) must match exactly. No inline either side. In the interface section it re-exports an imported function.</li>
+</ul>
+<h3>8.4 Assembly bodies</h3>
+<ul>
+<li>asm { ... }: passed to the RV64 assembler. li takes a 64-bit immediate or an integer constant's name, bare or m.name; so does a load or store offset, besides a local's name.</li>
+<li>call f, tail f and la rd, name reach a function (not inline), a module variable or a constant's storage (a string's bytes, an array or record constant), bare or m.name, through the same pc-relative slots as compiled code. call spends ra, so the body is framed unless naked.</li>
+<li>Labels are 0..31, referenced as nb / nf.</li>
+<li>Prologue/epilogue emitted unless the block uses neither fp nor ra and the function has no locals, no with, no by-reference parameter copies: then frameless leaf, ret appended.</li>
+<li>asm naked: always frameless, no ret appended; no locals or with.</li>
+<li>An asm body carries no ! clause.</li>
+</ul>
+<h2 id="9-modules">9. Modules</h2>
+<ul>
+<li>Unit of compilation and namespacing. The first bare ... at module scope separates interface (public) from body (private). The interface holds declarations and prototypes only.</li>
+<li>import 'p, 'q: one list, before the first declaration, never in the body. Paths relative, no .alm, no leading /. Resolution: importer's work directory, then the library root (/a). Local name = basename; two imports with one basename collide. Modules are keyed by resolved path. Recursive imports are rejected.</li>
+<li>Only the interface crosses the module boundary.</li>
+<li>Prompt only: importing m also imports m_spec when that file exists (not run).</li>
+</ul>
+<h3>9.1 Setup and teardown</h3>
+<ul>
+<li>setup fn () and teardown fn (), recognised by name at module scope only: no parameters, no result, not inline, not an alias.</li>
+<li>setup runs once, after the module's imports are loaded and set up, before the importer continues. It may raise; a failure fails the import (unit rolled back, modules loaded for it torn down, no teardown for this module).</li>
+<li>teardown raises nothing; runs at reset and on rollback in reverse load order, while the code is still mapped.</li>
+<li>Neither switches fibers nor blocks.</li>
+<li>setup is where module slices, ^t, address, affine values and finals are born.</li>
+</ul>
+<h2 id="10-mirror">10. Mirror</h2>
+<ul>
+<li>mirror is the module the compiler provides: bound in every module and at the prompt, never imported. It is the only way almac code reaches compiler state; a program that never names it does no reflection.</li>
+<li>Every accessor is total: an unknown name, word or address yields &quot;&quot; or zeros, never a failure.</li>
+<li>Text composed by type_name_of lasts until its next call; what, what_at, locals_at and slot_name_at share one buffer and last until the next of them. Copy to keep. Addresses die at reset.</li>
+</ul>
+<h3>10.1 Failures</h3>
+<ul>
+<li>fault_kind from dword: a failure word (7.9); the type of on ... with f. as dword is the explicit escape.</li>
+<li>fault_owner_of, fault_name_of, fault_kind_of: fn (f fault_kind) -&gt; string — the declaring module, the failure, the kind (&quot;&quot; for a whole-failure word).</li>
+</ul>
+<h3>10.2 Types</h3>
+<ul>
+<li>type_ref from dword: a type handle; no arithmetic, an untyped literal adopts it.</li>
+<li>type_name_of (t type_ref) -&gt; string: the name t is bound under, else its structure as a declaration writes it.</li>
+<li>shape record {kind int, size int, element type_ref, count int}; shape_of (t type_ref, into s shape). kind:</li>
+</ul>
 <pre>
-module = [ importlist ]
-         { declaration }
-         [ &quot;...&quot; { definition } ] .
+0 primitive  1 array     2 record    3 pointer   4 slice
+5 named      6 function  7 incomplete            8 enum
+9 union     10 union subtype
 </pre>
-<h3>11.1 interface and body</h3>
-<p>the two sections are separated by a single ... at module scope.
-declarations preceding the ... are public and exported under their
-names; declarations and definitions after it are private to the module.
-an interface prototype written fn name signature as m.f re-exports the
-imported function m.f under this module's name (10.3): the name joins
-this module's public interface, callable by importers as though defined
-here, with no forwarding code.</p>
-<p>the first top-level ... separates the interface from the body: a bare
-... at module scope can be nothing else, since a deferred-definition ...
-trails a signature (10.3), a variadic ... stands inside a parameter list
-(10.1), and the unnamed failure follows raises or a `|` within a clause
-(6.6, 9.9) — so a prototype ending in `raises ...` and the separator
-below it never run together. the interface holds prototypes and other
-declarations only
-— a deferred definition is rejected there — so no ... before the
-separator can belong to a declaration. by convention the separator is
-written alone on its own line, set off by blank lines, so it reads as a
-rule dividing the module in two.</p>
-<h3>11.2 imports</h3>
-<p>an import list names the modules to load before compilation begins.</p>
+<ul>
+<li>element: a named type's base, the element of an array, slice or pointer, a union's tag enum, a subtype's union. count: fields, labels or variants; a subtype's own index.</li>
+<li>member record {offset int, of type_ref}; member_of (t type_ref, i int, into m member): a field's offset and type, a label's value, a variant's payload. member_name_of string (t type_ref, i int).</li>
+</ul>
+<h3>10.3 Running source</h3>
+<ul>
+<li>The two outcomes, as declared unions:</li>
+</ul>
 <pre>
-importlist = &quot;import&quot; string { &quot;,&quot; string } .
+value union nothing
+  | number {of type_ref, item int}
+  | real {of type_ref, item double}
+  | bytes {of type_ref, item string}
+  | raised {f fault_kind}
+  | rejected {report string}
+program union
+  ready {entry dword, size int, of type_ref}
+  | rejected {report string}
 </pre>
-<p>one list stands at the head of a module, before its first declaration;
-a module has no second import list, and no import appears in the body
-section. each string is a path to a source file without the .alm
-extension.</p>
-<p>paths are relative. resolution tries the importing module's work
-directory first and the library root (/a on the boot volume) second, so
-a module-local sibling wins over a library module of the same name. a
-path beginning with / is rejected: modules load from the boot volume
-alone, so a drive prefix would say nothing.</p>
-<p>the local name of the module is the basename of the path, and an import
-does not rename what it binds. an exported member t of module m is
-accessed as m.t. modules are distinguished by their resolved path, so
-util/log and core/log are two modules and both may be loaded — but one
-module cannot import both, since the second binding of the name log
-collides with the first; where both are wanted, an intermediary module
-re-exports what is needed under other names (11.1). resolution is
-uniform: every import, the standard library included, names a source
-file on the path; there are no host-registered modules bound by
-basename. recursive imports are rejected.</p>
-<h3>11.3 standard modules</h3>
-<p>the standard modules (appendix b) are written in almac and live under
-core/ in the source tree; a module gains one by importing it — import
-'core/file binds the local name file, whose members are file.open,
-file.read, and so on. they are ordinary modules, distinguished only by
-shipping with the system: the same import, naming, and qualification
-rules apply, and nothing in them is privileged over user code. only the
-primitive types and the four forms of 10.5 are built into the compiler
-without an import; even the common failures are ordinary module-local
-declarations in the modules that raise them (core/file, core/heap,
-core/bytes, core/socket, core/boolean, aldos/machine; appendix b.2),
-imported like any other.</p>
-<p>the machine boundary is a single thin module: aldos/machine, whose
-functions are the rom firmware call table (video, keyboard, sound,
-disk, the byte-copy primitives), each a framed asm call through a slot
-of the table the firmware publishes at boot. the operating system above
-it is no table at all — aldos/volmgr, aldos/heapmgr, aldos/taskmgr,
-aldos/svcmgr and aldos/net are ordinary almac modules, imported and
-called by name like any other, and the core modules that need them
-(file, directory, heap, task, service, socket) import them directly.</p>
-<h3>11.4 spec modules</h3>
-<p>at the interactive prompt only, importing a module also re-imports a
-sibling module whose name is the subject's basename plus _spec (core/bit
-gives core/bit_spec) when that file exists, so a module and its checks
-recompile together. the spec is loaded, not run: it exports an entry
-point — by convention verify — that you call yourself
-(bit_spec.verify), and a failed spec.expect raises
-spec.fault.unexpected, reported at the prompt like any other fault. this
-applies to repl imports only; a program's import list is unaffected, and
-a _spec module is not itself given a spec. core/spec (appendix b) holds
-the expect helper.</p>
-<h3>11.5 setup and teardown</h3>
-<p>a module may define two functions the system calls on its behalf: setup,
-once the module has been loaded, and teardown, before it is unloaded.
-neither is declared by the language and neither is a keyword; they are
-ordinary definitions, recognised by name, and only at module scope. the
-same names at the prompt, or in the startup script, are ordinary names.</p>
-<p>each takes no parameters and returns nothing, and is neither inline nor
-an alias; a definition of either name that departs from this is
-rejected. teardown raises nothing: it runs while a module is given up,
-where there is nothing left to fail. setup may raise, and a failure
-that leaves it fails the import, exactly as a compile error in the
-module would: the unit that imported it is rolled back, the modules
-loaded for it are torn down, and the module's own teardown does not
-run, since its setup never finished. this is what lets setup claim the
-storage its module variables are born from (7). a setup that leaves
-something outside the image before it raises undoes that itself.</p>
-<p>setup runs as the last step of loading, after the module's own imports
-have been loaded and set up, and before the importing module continues.
-a hook may therefore call anything the module imports, and a module is
-never used before its setup has run. a module already loaded is not
-loaded again, so setup runs once.</p>
-<p>teardown runs when the image gives a module up — at reset, and when a
-compile unit that imported it fails and is rolled back. the modules are
-taken in reverse order of loading, so a module is torn down before
-anything it imports: an importer's teardown may still use them. it runs
-while the module's code is still in place, which is what makes it the
-place to give back anything held outside the image.</p>
-<p>the pair is for exactly that: state the module installs somewhere the
-image cannot see, and that would outlive it. aldos/taskmgr is the case
-to read — its setup writes the scheduler into the firmware call table
-and its teardown puts the firmware's own routines back, so a machine
-still dispatching through that table never reaches code that a reset has
-reclaimed. a module whose state is its own variables needs no teardown:
-the image reclaims those wholesale.</p>
-<p>setup has a second job: it is where a module variable holding a slice, a
-^t or an address is born (7), and where a module final of any type is
-born (7.1). aldos/blockmgr binds its cache view there, over the fixed
-address the cache lives at, once and for good:</p>
+<ul>
+<li>run (source string, into v value): compile source into the live image, run it, classify the outcome. A raised failure wins over any result; a statement yields nothing; an integer-based scalar a number; double a real; a slice bytes. A source that does not compile, or a run during a compile, is rejected with its report.</li>
+<li>prepare (source string, into p program): compile and flush as run would, without running. Definitions and imports take effect; the code lives until reset. entry is a plain function returning the unit's value (of none for a statement).</li>
+<li>reify (of type_ref, bits int, extra int, real int, f fault_kind, into v value): classify what a prepared unit left (a0, a1, the bits of fa0, the failure word) as run does.</li>
+</ul>
+<h3>10.4 Code</h3>
+<ul>
+<li>code record {start dword, size int, frame int, flags dword}: where the body starts, its size in bytes, its frame size. flags: 1 inline body, 2 host function, 4 module text (no function covers it), 8 data (a module variable's storage).</li>
+<li>code_of (name string, into c code): name as the prompt sees it, or m.f among m's publics. code_at (pc dword, into c code): what covers pc.</li>
+<li>name_at, owner_at, path_at (pc dword) -&gt; string: the covering name, its module (&quot;&quot; at the prompt), the module's resolved source path.</li>
+<li>what_at, locals_at (pc dword) -&gt; string: the covering function's declaration and locals clause as its source writes them.</li>
+<li>line_at (pc dword) -&gt; int: the source line, 0 when unknown.</li>
+<li>purpose_at (pc dword) -&gt; int: what the word is for, 0x80 added on the first word of a run. In order from 0:</li>
+</ul>
 <pre>
-final cache []b8
-
-fn setup () {
-  cache = view_at (cache_base as address), (capacity * page_bytes);
-}
+none frame argument copy zero tag leave save restore
+pass call release forget fault_check fault_out park
+clean unpark raise on next_handler keep handled reraise
+defer keep_result ret test skip_else loop brk cont when
 </pre>
-<p>both run on the fiber doing the loading, and must return to it: a hook
-neither switches fibers nor blocks.</p>
-<h2 id="appendix-a-syntax">appendix a — syntax</h2>
+<h3>10.5 Frames</h3>
+<ul>
+<li>slot record {start int, size int, flags dword, of type_ref}.</li>
+<li>vars_at (pc dword) -&gt; int: the parameters (first) and locals of the function covering pc. var_at (pc dword, i int, into s slot): the i-th one's fp offset, size, flags and type. var_name_at (pc dword, i int) -&gt; string.</li>
+<li>slot_name_at (pc dword, slot int, inner int) -&gt; string, slot_at (pc dword, slot int, inner int, into s slot): the frame word at fp + slot (inner &lt; 0), or byte inner of what the by-reference parameter at that slot points at, named as an expression (c.size, l[3], length name, &amp;x). Flag 128 marks the word of a by-reference parameter itself.</li>
+</ul>
+<h3>10.6 Modules and the image</h3>
+<ul>
+<li>modules () -&gt; []string: loaded modules in byte order.</li>
+<li>exports (name string) -&gt; []string: the names a module declares publicly in byte order, without the modules it imports; &quot;&quot; lists the prompt's own.</li>
+<li>what (name string) -&gt; string: the declaration of name (or m.name) as the interface section writes it, types only. An aggregate constant reads in its prefix form with the contents elided: t = []string [...].</li>
+<li>image_held, image_code, image_data, image_names () -&gt; int: bytes of pool the image holds; of it flushed code, module variables, and everything named.</li>
+<li>load_count () -&gt; int, load_name (i int) -&gt; string, load_us (i int) -&gt; int: imports in load order, each module's own load time in microseconds.</li>
+</ul>
+<h2 id="appendix-syntax">Appendix — Syntax</h2>
+<p>EBNF: = defines, | alternative, ( ) group, [ ] optional, { }
+repetition, &quot;x&quot; terminal.</p>
 <pre>
 module       = [ importlist ] { declaration }
                  [ &quot;...&quot; { definition } ] .
 importlist   = &quot;import&quot; string { &quot;,&quot; string } .
 
-declaration  = functionproto | vardecl | constdecl | typedecl
-             | failuredecl .
+declaration  = functionproto | vardecl | constdecl
+             | typedecl | failuredecl .
 definition   = fndef | declaration .
 
-functionproto = &quot;fn&quot; ident signature [ &quot;as&quot; qualident ] .
-vardecl       = ( &quot;var&quot; | &quot;final&quot; ) vardefs .
-constdecl     = &quot;const&quot; ( ident [ type ] | ident &quot;.&quot; ident ) &quot;=&quot; constexpr .
-constexpr     = &quot;true&quot; | &quot;false&quot; | &quot;none&quot;
-              | integer | hex | fp | character | string
-              | qualident [ &quot;.&quot; ident ]
-              | &quot;fn&quot; qualident
-              | arrayconst
-              | recordconst .
-arrayconst    = &quot;[&quot; constexpr { &quot;,&quot; constexpr } [ &quot;,&quot; ] &quot;]&quot; .
-recordconst   = &quot;{&quot; constexpr { &quot;,&quot; constexpr } [ &quot;,&quot; ] &quot;}&quot; .
-typedecl      = &quot;type&quot; ident ( &quot;as&quot; typename | &quot;from&quot; typename | structtype ) .
-failuredecl     = &quot;failure&quot; ident
-                ( &quot;as&quot; qualident | &quot;{&quot; ident { &quot;,&quot; ident } &quot;}&quot; ) .
-vardef        = ident { &quot;,&quot; ident } type .
+functionproto = ident &quot;fn&quot; signature [ &quot;as&quot; qualident ] .
+vardecl      = ( &quot;var&quot; | &quot;final&quot; ) vardefs .
+constdecl    = ( ident | ident &quot;.&quot; ident ) &quot;=&quot; constval .
+constval     = element | [ &quot;[&quot; &quot;]&quot; type ] arrayconst
+             | typename recordconst .
+element      = constexpr | &quot;fn&quot; qualident | recordconst .
+constexpr    = constterm { ( &quot;+&quot; | &quot;-&quot; ) constterm } .
+constterm    = constcast
+               { ( &quot;*&quot; | &quot;/&quot; | &quot;mod&quot; ) constcast } .
+constcast    = constunary [ &quot;as&quot; type ] .
+constunary   = [ &quot;-&quot; ] constprimary .
+constprimary = constatom
+             | ( &quot;and&quot; | &quot;or&quot; ) [ constatom
+               { &quot;,&quot; constatom } ]
+             | &quot;not&quot; constatom .
+constatom    = &quot;true&quot; | &quot;false&quot; | &quot;none&quot;
+             | integer | hex | fp | character | string
+             | qualident [ &quot;.&quot; ident ]
+             | &quot;(&quot; constexpr &quot;)&quot; .
+arrayconst   = &quot;[&quot; element { &quot;,&quot; element } [ &quot;,&quot; ]
+               &quot;]&quot; .
+recordconst  = &quot;{&quot; [ constinit { &quot;,&quot; constinit }
+               [ &quot;,&quot; ] ] &quot;}&quot; .
+constinit    = ident &quot;:&quot; element .
+typedecl     = ident
+               ( ( &quot;as&quot; | &quot;from&quot; | &quot;affine&quot; ) typename
+               | structtype ) .
+failuredecl  = ident &quot;failure&quot;
+               ( &quot;as&quot; qualident
+               | &quot;{&quot; ident { &quot;,&quot; ident } &quot;}&quot; ) .
+vardefs      = vardef { &quot;,&quot; vardef } [ &quot;,&quot; ] .
+vardef       = ident { &quot;,&quot; ident } type .
 
-fndef        = [ &quot;inline&quot; ] &quot;fn&quot; ident signature
-               ( &quot;as&quot; qualident | &quot;...&quot; | { ( &quot;var&quot; | &quot;final&quot; ) vardefs } ( body | asmbody ) ) .
+fndef        = ident [ &quot;inline&quot; ] &quot;fn&quot; signature
+               ( &quot;as&quot; qualident | &quot;...&quot;
+               | { ( &quot;var&quot; | &quot;final&quot; ) vardefs }
+                 ( body | asmbody ) ) .
 asmbody      = &quot;asm&quot; [ &quot;naked&quot; ] compound .
-signature    = [ type ] &quot;(&quot; [ param { &quot;,&quot; param } ] &quot;)&quot; [ raises ] .
-vardefs      = vardef { &quot;,&quot; vardef } .
-param        = ( &quot;into&quot; | &quot;var&quot; | &quot;from&quot; ) ident type | ident [ &quot;...&quot; ] type .
-raises       = &quot;raises&quot; ( &quot;...&quot; | qualident { &quot;|&quot; qualident } [ &quot;|&quot; &quot;...&quot; ] ) .
+signature    = &quot;(&quot; [ param { &quot;,&quot; param } ] &quot;)&quot;
+               [ &quot;-&gt;&quot; type ] [ failures ] .
+param        = ( &quot;into&quot; | &quot;var&quot; | &quot;from&quot; ) ident type
+             | ident [ &quot;...&quot; ] type .
+failures     = &quot;!&quot; ( &quot;...&quot; | qualident
+               { &quot;|&quot; qualident } [ &quot;|&quot; &quot;...&quot; ] ) .
 
 type         = [ &quot;const&quot; ] ( typename | structtype ) .
 structtype   = &quot;^&quot; type [ &quot;|&quot; &quot;none&quot; ]
@@ -1939,24 +546,32 @@ unionvariant = ident [ recdef ] .
 qualident    = ident [ &quot;.&quot; ident ] .
 
 body         = &quot;{&quot; [ stmts ] { handler } &quot;}&quot; .
-handler      = &quot;on&quot; ( &quot;...&quot; [ &quot;with&quot; ident ] | failureref { &quot;|&quot; failureref } )
+handler      = &quot;on&quot; ( &quot;...&quot; [ &quot;with&quot; ident ]
+                    | failureref { &quot;|&quot; failureref } )
                &quot;:&quot; stmts .
-failureref     = qualident [ &quot;.&quot; ident ] .
+failureref   = qualident [ &quot;.&quot; ident ] .
 compound     = &quot;{&quot; [ stmts ] &quot;}&quot; .
 stmts        = stmt { stmt } .
-stmt         = return | defer | raise | for | forwith | break | continue
-             | if | guard | when | with | ( expr &quot;;&quot; ) .
+stmt         = return | defer | raise | for | forwith
+             | break | continue | if | guard | when
+             | with | ( expr &quot;;&quot; ) .
 return       = &quot;return&quot; expr &quot;;&quot; .
 defer        = &quot;defer&quot; expr &quot;;&quot; .
 raise        = &quot;raise&quot; qualident &quot;.&quot; ident &quot;;&quot; .
 for          = &quot;for&quot; [ expr [ &quot;;&quot; expr ] ] compound .
-forwith      = &quot;for&quot; &quot;with&quot; ident &quot;=&quot; expr &quot;;&quot; expr compound .
-if           = &quot;if&quot; expr compound [ &quot;else&quot; ( if | compound ) ] .
-guard        = &quot;guard&quot; ident [ typename ] &quot;|&quot; escape &quot;;&quot; .
-escape       = ( &quot;return&quot; arg ) | ( &quot;raise&quot; qualident &quot;.&quot; ident )
+forwith      = &quot;for&quot; &quot;with&quot; ident &quot;=&quot; expr &quot;;&quot; expr
+               compound .
+if           = &quot;if&quot; expr compound
+               [ &quot;else&quot; ( if | compound ) ] .
+guard        = &quot;guard&quot; ident [ typename ]
+               &quot;|&quot; escape &quot;;&quot; .
+escape       = &quot;return&quot; arg
+             | &quot;raise&quot; qualident &quot;.&quot; ident
              | &quot;break&quot; | &quot;continue&quot; .
-when         = &quot;when&quot; expr &quot;{&quot; { case } [ elsecase ] &quot;}&quot; .
-case         = &quot;*&quot; caselabel { &quot;,&quot; caselabel } &quot;:&quot; stmts .
+when         = &quot;when&quot; expr
+               &quot;{&quot; { case } [ elsecase ] &quot;}&quot; .
+case         = &quot;*&quot; caselabel { &quot;,&quot; caselabel }
+               &quot;:&quot; stmts .
 caselabel    = integer | hex | character | qualident .
 elsecase     = &quot;*&quot; &quot;else&quot; &quot;:&quot; stmts .
 with         = &quot;with&quot; ident &quot;=&quot; designator &quot;;&quot; .
@@ -1965,17 +580,24 @@ break        = &quot;break&quot; &quot;;&quot; .
 continue     = &quot;continue&quot; &quot;;&quot; .
 
 expr         = assign .
-assign       = compare [ ( &quot;=&quot; | &quot;+=&quot; | &quot;-=&quot; ) compare ] .
+assign       = compare
+               [ ( &quot;=&quot; | &quot;+=&quot; | &quot;-=&quot; ) compare
+               | &quot;=&quot; recordexpr ] .
+recordexpr   = &quot;{&quot; [ fieldinit { &quot;,&quot; fieldinit }
+               [ &quot;,&quot; ] ] &quot;}&quot; .
+fieldinit    = ident &quot;:&quot; ( expr | recordexpr ) .
 compare      = addition [ relation addition ] .
 relation     = &quot;==&quot; | &quot;!=&quot; | &quot;&lt;&quot; | &quot;&lt;=&quot; | &quot;&gt;&quot; | &quot;&gt;=&quot; .
 addition     = multiply { ( &quot;+&quot; | &quot;-&quot; ) multiply } .
 multiply     = cast { ( &quot;*&quot; | &quot;/&quot; | &quot;mod&quot; ) cast } .
 cast         = unary [ &quot;as&quot; type ] .
 unary        = [ &quot;-&quot; ] postfix .
-postfix      = primary { index | field | deref } [ args ] .
+postfix      = primary { index | field | deref }
+               [ args ] .
 args         = arg { &quot;,&quot; arg } .
-arg          = ( &quot;into&quot; | &quot;var&quot; | &quot;from&quot; ) atom { index | field | deref }
-             | atom { index | field | deref } .
+arg          = [ &quot;into&quot; | &quot;var&quot; | &quot;from&quot; ] atom
+               { index | field | deref }
+             | &quot;into&quot; .
 index        = &quot;[&quot; expr [ &quot;:&quot; expr ] &quot;]&quot; .
 field        = &quot;.&quot; ident .
 deref        = &quot;^&quot; .
@@ -1985,7 +607,8 @@ atom         = &quot;none&quot; | &quot;true&quot; | &quot;false&quot;
              | qualident
              | &quot;fn&quot; atom { index | field | deref }
              | &quot;(&quot; expr &quot;)&quot; .
-ifexpr       = &quot;if&quot; expr compound [ &quot;else&quot; ( ifexpr | compound ) ] .
+ifexpr       = &quot;if&quot; expr compound
+               [ &quot;else&quot; ( ifexpr | compound ) ] .
 
 ident        = letter { letter | digit } .
 letter       = &quot;a&quot; ... &quot;z&quot; | &quot;_&quot; .
@@ -1995,634 +618,12 @@ integer      = digit { digit } .
 hex          = &quot;0&quot; &quot;x&quot; hexdigit { hexdigit } .
 fp           = digit { digit } &quot;.&quot; digit { digit }
                [ &quot;e&quot; [ &quot;+&quot; | &quot;-&quot; ] digit { digit } ] .
-character    = &quot;'&quot; any-char-except-quote &quot;'&quot; .
-string       = '&quot;' { any-char-except-quote } '&quot;' | shortstring .
-shortstring  = &quot;'&quot; { any-char-except-whitespace-or-closer } .
-comment      = &quot;--&quot; { any-char-except-newline } newline .
+character    = &quot;'&quot; any-byte-except-quote &quot;'&quot; .
+string       = '&quot;' { any-byte-except-quote } '&quot;'
+             | shortstring .
+shortstring  = &quot;'&quot;
+               { any-byte-except-whitespace-or-closer } .
+comment      = &quot;--&quot; { any-byte-except-newline } newline .
 </pre>
-<h2 id="appendix-b-predefined-entities">appendix b — predefined entities</h2>
-<h3>b.1 built-in types</h3>
-<ul>
-<li>bool, s64, b8, b64, f64, address</li>
-<li>string, an alias for [ ] b8</li>
-<li>integer, the type of unconverted integer literals</li>
-</ul>
-<h3>b.2 standard-library failures</h3>
-<p>there are no predeclared, globally-visible failures: every failure is an
-ordinary module-local declaration (9.9), named fault in its owner module
-and reached qualified as module.fault. the standard library declares
-each common fault in the module whose operations raise it — no module
-exists only to hold a failure. a module that raises or handles one
-imports its owner; the directory module, for instance, imports
-core/file for file.fault.</p>
-<pre>
--- core/file
-failure fault { not_found, access_failed, already_exists, no_space }
--- core/boolean
-failure fault { invalid_argument, contract_failed, out_of_range }
--- core/bytes
-failure fault { invalid_format, buffer_overflow }
--- core/heap
-failure fault { out_of_memory }
--- core/socket
-failure fault { unavailable, in_use, no_sockets, transfer_failed }
--- aldos/machine
-failure fault { illegal, access, misaligned, unknown }
--- core/spec
-failure fault { unexpected }
-</pre>
-<p>file.fault names environment faults of the file system, shared by
-core/directory; boolean.fault a violated contract — a truth about the
-arguments that failed to hold, raised by any module whose caller broke
-its precondition; bytes.fault a malformed value or an overflowed buffer
-(raised by the byte, bytes, boolean, float, signed, text, and time
-codecs); heap.fault exhaustion of memory, also raised by a program
-whose own fixed pool runs out; socket.fault a datagram exchange gone
-wrong. machine.fault is the
-machine's own failure: its kinds name a recovered cpu trap (illegal
-instruction, bad access, misalignment). it is never raised from ordinary
-source — a trap can strike any frame, so no signature declares it; the
-recovery boundary alone calls machine.from_trap, which maps the trapped
-mcause to a kind and raises it where machine.fault is observed.
-spec.fault.unexpected is raised by spec.expect when an assertion in a
-*_spec module does not hold (11.4). no failure number is fixed — the
-host maps its error codes onto failures by name, not by number (9.9).</p>
-<p>the operating-system modules under aldos/ keep their own aldos.fault,
-declared in aldos/aldos: the kernel borrows nothing from core, so every
-aldos-operation error is one of its kinds, and the core modules above
-translate them back to the file.fault, heap.fault and socket.fault
-kinds their interfaces document.</p>
-<p>the kinds that need a gloss:</p>
-<ul>
-<li>not_found — a path names no existing file or directory</li>
-<li>already_exists — the target name is already taken</li>
-<li>no_space — a directory is full or the volume is out of space</li>
-<li>contract_failed — a stated precondition or invariant of a procedure was violated by the caller</li>
-</ul>
-<p>the file and directory modules raise file.fault for every path
-operation; the run-time kind reports the real cause. open, size, remove
-and directory.remove can only miss (not_found); create, append, replace,
-copy and touch can also run out of space (no_space); move and
-directory.make can additionally hit an existing target (already_exists).</p>
-<h3>b.3 standard modules</h3>
-<p>these modules ship with the system under core/; a module imports the
-ones it needs (import 'core/byte) and qualifies their members by the
-basename (byte.peek). they are written in almac, not host intrinsics:
-the machine boundary is reached through one interface module,
-aldos/machine (11.3), and the kernel modules under aldos/ are imported
-by name like any other. the signatures below describe the public
-interface; failures flow through them by the rules of 9.9.</p>
-<p>byte — access and conversion for the single byte b8. format and parse
-render and read the character-literal form 'x' (one byte between
-apostrophes); peek and poke are a bare load and store through an
-address.</p>
-<pre>
-fn peek b8 (addr address)
-fn poke (addr address, v b8)
-fn format string (var b string, v b8) raises bytes.fault
-fn parse b8 (src string) raises bytes.fault
-</pre>
-<p>bytes — operations on byte buffers viewed as slices of b8. copy is a
-forward memcpy, unsafe on overlapping ranges where the destination
-follows the source; move is a memmove, safe for any overlap; both return
-the unwritten tail of the destination. fill writes one b8 value to every
-byte; clear is fill with 0. format and parse render and read the quoted
-&quot;...&quot; form. view is the trusted forge that gives a claimed block its
-slice: a slice is a data address and a count, which is what its two
-arguments already are, so it is an empty inline asm body costing
-nothing. the program asserts the storage is there and outlives the view
-— the same assertion address-to-pointer makes (8.2.5), but with the
-length carried honestly rather than borrowed from an oversized array
-type.</p>
-<p>read_le16/read_le32 and write_le16/write_le32 are the fixed-width
-little-endian scalars of a disk or wire format, at a byte offset in the
-buffer. the byte order is the format's and is spelled out, not the
-machine's — a load of the whole width would bake the host's endianness
-into the file. neither the offset nor the width is checked against the
-slice: the caller asserts the bytes are there, as it does for an
-ordinary index. the readers are unsigned, so a caller whose field is
-signed extends it itself; the writers take the low bits of v and are
-exact for a negative one, its two's complement being what lands in the
-buffer. b8 and b64 need no such pair — one byte has no order, and the
-whole word is a cast (8.2.5).</p>
-<pre>
-fn clear (var buffer string)
-fn fill (var buffer string, value b8)
-fn copy string (src string, var dst string)
-fn move string (src string, var dst string)
-fn equal bool (a string, b string)
-fn compare s64 (a string, b string)
-fn format string (var b string, v string) raises bytes.fault
-fn parse string (var b string, src string) raises bytes.fault
-fn view string (base address, count s64)
-fn read_le16 s64 (b string, off s64)
-fn read_le32 s64 (b string, off s64)
-fn write_le16 (var b string, off s64, v s64)
-fn write_le32 (var b string, off s64, v s64)
-</pre>
-<p>collections/array — a growable heap-backed byte array. it stores bytes
-and nothing else: an element type is supplied by the caller through the
-byte-slice conversions of 8.2.5, which is what stands here in place of
-generics. a value goes in as its byte view and comes back out of view as
-a typed slice or as one scalar, so one module serves every element type
-and the two casts are the only places the program asserts what the bytes
-hold. storage grows by doubling; because growing moves the block, a view
-does not survive the append that outgrows it. a zeroed record is a valid
-empty array, so one may stand as a module variable (7); dispose is
-idempotent and leaves an array a later create can fill again. grow takes
-n more bytes and returns them uninitialised for the caller to write;
-append copies data onto the end.</p>
-<pre>
-type ty record { base s64, count s64, room s64 }
-
-fn create (var self ty, room s64) raises heap.fault
-fn dispose (var self ty)
-fn reset (var self ty)
-fn size s64 (self ty)
-fn capacity s64 (self ty)
-fn view string (self ty)
-fn grow string (var self ty, n s64) raises heap.fault
-fn append (var self ty, data string) raises heap.fault
-</pre>
-<p>collections/bitset — a heap-backed set of bits, n of them from create,
-addressed by index. create builds the set into an out parameter and
-dispose consumes it (from), so a double dispose or a use after one is a
-compile-time error; reset clears every bit.</p>
-<pre>
-type ty record { base address, words bit.slice }
-
-fn create (into self ty, n s64) raises heap.fault
-fn dispose (from self ty)
-fn reset (var self ty)
-fn set (var self ty, i s64)
-fn clear (var self ty, i s64)
-fn test bool (self ty, i s64)
-</pre>
-<p>collections/table — a growable heap-backed hash table, mapping a key of
-key_size bytes to a value of value_size bytes. it knows nothing else
-about either: both cross the boundary through the byte-slice conversions
-of 8.2.5, exactly as the array's elements do, so one module serves every
-pair of types. the two sizes are fixed at create — or, for a table that
-never created, by its first put — and every later key and value must
-match them; put says so with boolean.fault.invalid_argument, while get and
-remove stay quiet, a key of the wrong length being one the table
-provably does not hold. storage is one block, a control byte a slot and
-then the slots: a byte is 0 when the slot is empty, 1 when a removal
-emptied it, and otherwise the top seven bits of the key's hash under the
-high bit, so a linear probe compares key bytes only where those seven
-agree. the slot count is a power of two and a claimed block arrives
-zeroed, which makes a fresh table all-empty for free. three slots in
-four may be spoken for; filling past that rehashes into a block twice
-the size, or one of the same size when it was removals rather than
-entries that filled it. because growing moves the block, a view does not
-survive the put that outgrows it. a zeroed record is a valid empty
-table, so one may stand as a module variable (7); dispose is idempotent.
-next, key_at and value_at walk the slots: next hands back the first
-taken slot at or after i, and -1 past the end.</p>
-<pre>
-type ty record { base s64, count s64, used s64, room s64,
-                 key_size s64, value_size s64 }
-
-fn create (var self ty, expect s64, key_size s64, value_size s64)
-  raises heap.fault
-fn dispose (var self ty)
-fn reset (var self ty)
-fn size s64 (self ty)
-fn capacity s64 (self ty)
-fn put (var self ty, key string, value string)
-  raises heap.fault | boolean.fault
-fn get string (self ty, key string)
-fn remove bool (var self ty, key string)
-fn next s64 (self ty, i s64)
-fn key_at string (self ty, i s64)
-fn value_at string (self ty, i s64)
-</pre>
-<p>bit — bit-twiddling on b64. shil/shir shift, both logically (the
-arithmetic shifts are signed's ashil/ashir); xor is bitwise
-exclusive-or; clz/ctz count leading and trailing zeros, each 64 for a
-zero operand, and ones counts the set bits. setting and clearing single
-bits and ranges is written in the language (8.2.3), not called for.
-every operation here is on b64; a b8 reaches them through as b64.</p>
-<pre>
-fn shil b64 (v b64, n s64)
-fn shir b64 (v b64, n s64)
-fn xor b64 (a b64, b b64)
-fn clz s64 (v b64)
-fn ctz s64 (v b64)
-fn ones s64 (v b64)
-fn format string (var b string, v b64) raises bytes.fault
-</pre>
-<p>signed — s64 arithmetic, conversion, and limits. lowest and highest are
-the s64 range bounds, written as hexadecimal bit patterns.</p>
-<pre>
-fn abs s64 (x s64)
-fn round s64 (x f64)
-fn min s64 (a s64, b s64)
-fn max s64 (a s64, b s64)
-fn format string (var b string, v s64) raises bytes.fault
-fn parse s64 (src string) raises boolean.fault | bytes.fault
-
-const lowest  = 0x8000000000000000
-const highest = 0x7fffffffffffffff
-</pre>
-<p>float — ieee-754 arithmetic, conversion, and constants. pi, e, and
-epsilon are consts; the special values nan, infinity, lowest (the
-most-negative finite f64), and highest (the most-positive) are returned
-by functions, since their bit patterns are not writable as literals.</p>
-<pre>
-fn abs f64 (x f64)
-fn sqrt f64 (x f64)
-fn min f64 (a f64, b f64)
-fn max f64 (a f64, b f64)
-fn round f64 (x f64)
-fn cbrt f64 (x f64)
-fn trunc f64 (x f64)
-fn frac f64 (x f64)
-fn ln f64 (x f64)
-fn exp f64 (x f64)
-fn sin f64 (x f64)
-fn cos f64 (x f64)
-fn tan f64 (x f64)
-fn arcsin f64 (x f64)
-fn arccos f64 (x f64)
-fn arctan f64 (x f64)
-fn arctan2 f64 (y f64, x f64)
-fn is_infinity bool (x f64)
-fn is_nan bool (x f64)
-fn is_finite bool (x f64)
-fn decompose (x f64, var mantissa f64, var exponent f64)
-fn compose f64 (mantissa f64, ex f64)
-fn format string (var b string, v f64) raises bytes.fault
-fn parse f64 (src string) raises bytes.fault
-fn nan f64 ()
-fn infinity f64 ()
-fn lowest f64 ()
-fn highest f64 ()
-
-const pi      = 3.14159265358979323846
-const e       = 2.71828182845904523536
-const epsilon = 2.2204460492503131e-16
-</pre>
-<p>boolean — conversion for bool, plus elementwise ops on []bool buffers.
-format and parse render and read &quot;true&quot;/&quot;false&quot;; clear/fill/copy set or
-copy bool elements (copy returns the unwritten tail). it also owns
-boolean.fault, the contract-violation failure (b.2).</p>
-<pre>
-failure fault { invalid_argument, contract_failed, out_of_range }
-
-fn format string (var b string, v bool) raises bytes.fault
-fn parse bool (src string) raises bytes.fault
-fn clear (var buffer []bool)
-fn fill (var buffer []bool, value bool)
-fn copy []bool (src []bool, var dst []bool)
-</pre>
-<p>heap — untyped heap allocation over the kernel (aldos/heapmgr).
-claim asks for n bytes — a type name in argument position passes its
-size, so heap.claim node asks for room for a node. it raises
-heap.fault.out_of_memory instead of returning none, so its address
-result converts implicitly to the pointer it initialises (the trusted
-boundary, 8.2.5) — assigning it to a non-null ^t local births that
-local (the birth rule, 7), with no ^t|none and guard needed. when the
-claimed type is a record with non-null members, the block comes back
-zeroed and its fields are deferred obligations: born one by one before
-the record is used as a whole (the field-level birth rule, 7). release
-takes its pointer `from` — freeing consumes it (6.4, 7), so the
-caller's binding dies at the call and a use-after-free or double-release
-is a compile-time error. available reports the bytes still claimable;
-total the bytes the pool manages.</p>
-<pre>
-failure fault { out_of_memory }
-
-fn claim address (size s64) raises heap.fault        room for size bytes
-fn release (from p address)                          free a claimed block
-fn available s64 ()                                  bytes still claimable
-fn total s64 ()                                      bytes the pool manages
-</pre>
-<p>random — pseudo-random number generation; the state record holds a
-single 64-bit splitmix64 seed.</p>
-<pre>
-type state record { seed s64 }
-
-fn seed (var s state, n s64)
-fn float f64 (var s state)
-fn coin bool (var s state)
-fn range s64 (var s state, lo s64, hi s64) raises boolean.fault
-</pre>
-<p>clock — monotonic timing.</p>
-<pre>
-type tick from s64
-
-fn now tick ()
-fn elapsed_ns s64 (t tick)
-fn elapsed_us s64 (t tick)
-fn elapsed_ms s64 (t tick)
-</pre>
-<p>time — wall-clock time and calendar decomposition; usecs counts
-microseconds since the unix epoch.</p>
-<pre>
-type usecs from s64
-type calendar record {
-  year s64,
-  month s64,
-  day s64,
-  hour s64,
-  minute s64,
-  second s64,
-  weekday s64,
-  yearday s64,
-}
-
-fn now usecs ()
-fn decompose (t usecs, var cal calendar)
-fn compose usecs (cal calendar)
-fn format string (var b string, t usecs) raises bytes.fault
-</pre>
-<p>file — file input and output. a file id is an opaque handle returned by
-open, create, append, or replace and consumed by the other operations.
-file.fault (b.2) is declared here and shared by directory.</p>
-<pre>
-failure fault { not_found, access_failed, already_exists, no_space }
-
-type id from s64
-
-fn open id (path string) raises file.fault
-fn create id (path string) raises file.fault
-fn append id (path string) raises file.fault
-fn replace id (path string) raises file.fault
-fn seek (f id, offset s64) raises file.fault
-fn read string (f id, var buffer string) raises file.fault
-fn write string (f id, data string) raises file.fault
-fn close (f id)
-fn is_exist bool (path string)
-fn size s64 (path string) raises file.fault
-fn remove (path string) raises file.fault
-fn copy (src string, dst string) raises file.fault
-fn move (src string, dst string) raises file.fault
-fn touch (path string) raises file.fault
-</pre>
-<p>directory — directory operations, iteration, and path inspection. open
-returns a handle; next advances one entry, filling a caller-owned entry
-record and returning false at the end; close releases the handle. the
-is_* predicates never raise. change sets the current working directory
-and returns the normalized path (the repl's cd wraps it to print that
-path).</p>
-<pre>
-type id from s64                   -- open directory handle
-type entry record {                -- one directory entry
-    name   [64]b8,                 -- name bytes, length of them valid
-    length s64,
-    is_dir bool
-}
-
-fn make (path string) raises file.fault
-fn remove (path string) raises file.fault
-fn open id (path string) raises file.fault
-fn next bool (handle id, var e entry)
-fn close (handle id)
-fn change string (path string) raises bytes.fault
-fn is_exist bool (path string)
-fn is_file bool (path string)
-fn is_dir bool (path string)
-</pre>
-<p>a typical listing walks the handle and slices each name to its valid
-length:</p>
-<pre>
-fn ls () raises file.fault
-    var h directory.id, e directory.entry, more bool {
-    h = directory.open &quot;.&quot;;
-    defer directory.close h;
-    more = directory.next h, var e;
-    for more {
-        tty.say e.name[0:e.length];
-        more = directory.next h, var e;
-    }
-}
-</pre>
-<p>the shell-style file commands (cd, ls, mkdir, rmdir, rm, cat, touch, cp,
-mv) are not language builtins: the repl defines them in its rc.alm
-startup file over the file and directory modules.</p>
-<p>screen — the off-screen text display and keyboard. a program draws into
-a surface, a width x height byte canvas it owns, with the buffer edits
-clear/print/top/bottom/frame, then blit copies the surface to the live
-screen at one of four intensities (zero/dim/normal/bright). snapshot
-saves the live screen and restore puts it back, so a full-screen program
-can leave the console as it found it. poll_key is a non-blocking read
-that fills a decoded key record and returns false when no key is
-waiting. the decoded code is flat: a text key is its ascii byte (below
-key_control = 0x80), a control key sits at 0x81..0x9b, so a single when
-on code dispatches both. the live cursor and console text output live in
-tty, not here.</p>
-<pre>
-type intensity from b8             -- a 2-bit cell intensity (0..3)
-type surface [4800]b8              -- a width x height canvas
-type key record {                 -- a decoded keyboard event
-  code             b8,
-  is_key_down      bool,
-  is_shift_pressed bool,
-  is_ctrl_pressed  bool,
-  is_alt_pressed   bool,
-  is_key_up        bool,
-}
-
-fn snapshot bool ()
-fn restore ()
-fn blit (source []b8, c intensity)
-fn clear (var b surface)
-fn print (var b surface, x s64, y s64, s string)
-fn top (var b surface, s string)
-fn bottom (var b surface, s string)
-fn frame (var b surface, x s64, y s64, w s64, h s64) raises boolean.fault
-fn poll_key bool (var k key)
-
-const width  = 120                 -- text columns, s64
-const height = 40                  -- text rows, s64
-const size   = 4800                -- width * height, the surface length
-const zero   = 0                   -- intensity values
-const dim    = 1
-const normal = 2
-const bright = 3
-const key_control     = 128        -- code &gt;= this (0x80) is a control key
-const key_arrow_up    = 129        -- control-key code (bit 7 set), b8
-const key_arrow_down  = 130
-const key_arrow_left  = 131
-const key_arrow_right = 132
-const key_home        = 133
-const key_end         = 134
-const key_page_up     = 135
-const key_backspace   = 136
-const key_tab         = 137
-const key_enter       = 138
-const key_page_down   = 139
-const key_insert      = 140
-const key_del         = 141
-const key_f1          = 142
-const key_f2          = 143
-const key_f3          = 144
-const key_f4          = 145
-const key_f5          = 146
-const key_f6          = 147
-const key_f7          = 148
-const key_f8          = 149
-const key_f9          = 150
-const key_f10         = 151
-const key_f11         = 152
-const key_f12         = 153
-const key_esc         = 155
-</pre>
-<p>tty — the operator console: formatted text output and line input. say
-and sayin write a freely-mixed sequence of values (each lifted into
-text's formattable union, appendix below), say ending the line and sayin
-not; neither raises, a formatter overflow being absorbed internally. ask
-writes a prompt and reads one edited line into the caller's buffer,
-returning the bytes read. at, show_cursor, and hide_cursor drive the
-live console cursor that say/sayin/ask advance.</p>
-<p>what say and sayin write to is a sink — a function taking the bytes —
-and the console is the sink they start with, installed before anything
-importing tty can say a word. to puts another in its place, and output
-follows it until console is put back; there is no state saying which
-destination is in force, because the destination is the state. a program
-holding the display has the console grid hidden under its canvas, so it
-installs a sink of its own and presents what it collected; a sink over a
-file or a socket is the same one line. the line ending say writes is a
-newline byte in the text rather than a separate cursor move, which is
-what lets a sink be one function. a sink that cannot take what it is
-given drops it: say and sayin stay non-raising however they are routed.
-a call from a service still goes to the journal instead — that is the
-calling fiber's own destination, and a foreground sink has no claim on
-it.</p>
-<pre>
-type sink fn (s string)
-
-fn say (xs ...text.formattable)
-fn sayin (xs ...text.formattable)
-fn ask string (prompt string, var buffer string)
-fn at (col s64, row s64)
-fn show_cursor ()
-fn hide_cursor ()
-fn console (s string)
-fn to (destination sink)
-</pre>
-<p>text — rendering values into a byte buffer. formattable is the shared
-vocabulary for textual output: each primitive type lifts into it
-(8.2.5), so a variadic ...formattable accepts a mixed argument list
-(tty's say/sayin take the same union). format_any renders one value into
-the buffer; format renders a whole pack, writing each element in turn;
-both return the written slice and raise bytes.fault on overflow.</p>
-<pre>
-type formattable union
-  number { val s64 } | real { val f64 }
-| truth { val bool } | str { val string }
-
-fn format_any string (var buffer string, v formattable) raises bytes.fault
-fn format string (var buffer string, xs ...formattable) raises bytes.fault
-</pre>
-<p>debug — diagnostic tracing. trace formats a mixed sequence of values
-into one line and submits it to the firmware tracer device, a debug
-channel separate from the console; an overflow truncates rather than
-raising, so trace never fails.</p>
-<pre>
-fn trace (xs ...text.formattable)
-</pre>
-<p>sound — the program-facing audio api, a thin frontend over the aldos
-sound stack (aldos/mixer owns the ring device and mixes two channels;
-aldos/pcm streams sample windows; aldos/apu is the beeper synth). play
-streams an in-memory 24khz mono s16le buffer end to end.
-begin/ready/fill/finish are that same stream taken apart so a streaming
-caller can poll and redraw between fills; stop aborts. tone sounds a
-square wave that mixes over any pcm playback. (the .echo file player
-lives in programs/sound/recording; the mixer lets pcm and beeper play at
-once.)</p>
-<pre>
-fn play (samples string)
-fn begin (w []b8, n s64)
-fn ready bool ()
-fn fill (w []b8, n s64)
-fn finish ()
-fn stop ()
-fn tone (frequency s64, delay s64)
-</pre>
-<p>spec — assertion helper for the *_spec auto-tests (11.4). expect raises
-spec.fault.unexpected when its argument is false and does nothing when
-it is true. a spec module beside core/m, named core/m_spec, is
-re-imported automatically when the prompt (re)imports core/m; gather its
-checks under an entry point (by convention verify) and run it as
-m_spec.verify.</p>
-<pre>
-failure fault { unexpected }
-
-fn expect (assertion bool) raises fault
-</pre>
-<p>task — cooperative multitasking. yield hands control to the scheduler
-so other ready tasks can run; on hosts without a scheduler it is a
-no-op. the module also runs resident own-stack agents: every runs work
-on its own coroutine stack every period_ms (cooperatively, only when the
-system yields to it), returning a handle; cancel stops the agent and
-frees its stack. each agent carries its own resource-leak counter
-(core/scope), and cancel reports an agent that ended with resources
-still outstanding.</p>
-<pre>
-type handle as address
-
-fn yield ()
-fn every handle (period_ms s64, stack_size s64, work fn ()) raises heap.fault
-fn cancel (h handle)
-</pre>
-<p>mirror — reflection: the one module that reads compiler state, and the
-one not written in almac. fault_kind is the failure word an unnamed
-handler binds (9.9); it is a distinct type, so it never mixes with a
-number on its own, and its layout is deliberately not a language
-matter — failure numbers are assigned in import order and are no abi
-(b.2), so no program may compute a name from one. the three accessors do
-that instead, returning the interned names the compiler already holds:
-owner and name give the qualified `owner.failure` a diagnostic prints,
-kind the kind within it. all three are total — a word they cannot place
-yields the empty string rather than a failure, since a caller is
-typically inside a handler reporting one already. mirror needs no import
-and, being the whole meta surface, a program that never names it does no
-reflection at all.</p>
-<p>run compiles a source string into the live image as a prompt line, runs
-it, and reifies what happened into the value union it is given. the
-variants are the outcomes a prompt already has: no value at all, a
-scalar, a real, a slice — and the two ways a run ends without one, the
-source raised or it never compiled. so a run is answered by a single
-when, and every outcome arrives as data: a failure becomes a raised
-holding the same word a handler would bind, a diagnostic becomes the
-rejected report, worded as the prompt words it. run is therefore total
-— it raises nothing, and it clears the failure it caught rather than
-leaving one standing that the caller never made. it answers rejected,
-not a compile, for a source given while a compile is already in flight,
-which a module setup hook is the way to reach.</p>
-<p>each carrying variant also names the type of what it carries. a type_ref
-is an opaque handle on a compiler type, distinct for the same reason
-fault_kind is: it is an address, and no arithmetic on one means
-anything. type_name_of spells it — the name it was declared under, or
-its structure when it never had one — and is total in the same way, so a
-handle it cannot place is the empty string. what a slice variant carries
-is borrowed, not owned: it views storage the run unit left behind, and a
-report is valid until the next run, so anything to be kept is copied.</p>
-<pre>
-type fault_kind
-type type_ref
-type value union
-    nothing
-  | number   { of type_ref, item s64 }
-  | real     { of type_ref, item f64 }
-  | bytes    { of type_ref, item []b8 }
-  | raised   { f fault_kind }
-  | rejected { report string }
-
-fn fault_owner_of string (f fault_kind)
-fn fault_name_of string (f fault_kind)
-fn fault_kind_of string (f fault_kind)
-fn run (source string, into v value)
-fn type_name_of string (t type_ref)
-</pre>
-<p>below the standard library sit the aldos modules. aldos/machine wraps
-the host boundary as thin asm trampolines over the rom firmware call
-table (video, keyboard, sound, disk, the byte-copy primitives behind
-bytes); the rest — volmgr behind file and directory, heapmgr behind
-heap, taskmgr behind task, svcmgr behind service, net behind socket —
-are ordinary almac modules. ordinary programs use the modules above
-rather than these directly.</p>
 </body>
 </html>

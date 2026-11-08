@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Almac snippets</title>
+<meta name="author" content="ortfero">
+<meta name="year" content="2026">
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<h1>Almac snippets</h1>
+<address>ortfero</address>
+<p>Small pieces of almac for everyday tasks, grouped by topic and
+ordered from the simplest. Each one is a complete fragment of
+a module body: its imports come first, and the functions go
+below the module's ... line. The language itself is described
+in the almac language report [1].</p>
+<p><a href="almac_report.moff">[1] Almac language report</a></p>
+<h2 id="1-basics">1. Basics</h2>
+<p>Say hello.</p>
+<pre>
+import 'core/devices/tty
+
+hello fn () {
+  tty.say &quot;hello, aldan&quot;;
+}
+</pre>
+<p>Return a value. The last expression is the result.</p>
+<pre>
+square fn (x int) -&gt; int {
+  x * x;
+}
+</pre>
+<p>Name a constant. A name and a value make one; no keyword.</p>
+<pre>
+import 'core/devices/tty
+
+limit = 100
+greeting = &quot;hi&quot;
+
+show fn () {
+  tty.say greeting, &quot; &quot;, limit;
+}
+</pre>
+<p>Use locals. They follow the signature and start at zero.</p>
+<pre>
+average fn (a int, b int) -&gt; int
+  var sum int {
+  sum = a + b;
+  sum / 2;
+}
+</pre>
+<p>Branch with if.</p>
+<pre>
+sign fn (x int) -&gt; int {
+  if x &gt; 0 {
+    return 1;
+  } else if x &lt; 0 {
+    return -1;
+  }
+  0;
+}
+</pre>
+<p>Choose a value with an if expression.</p>
+<pre>
+larger fn (a int, b int) -&gt; int
+  var r int {
+  r = if a &gt; b { a; } else { b; };
+  r;
+}
+</pre>
+<p>Count with a for loop.</p>
+<pre>
+import 'core/devices/tty
+
+count fn (n int)
+  var i int {
+  for i &lt; n; i += 1 {
+    tty.say i;
+  }
+}
+</pre>
+<p>Loop until a condition, with break.</p>
+<pre>
+first_power fn (limit int) -&gt; int
+  var p int {
+  p = 1;
+  for {
+    if p &gt;= limit { break; }
+    p = p * 2;
+  }
+  p;
+}
+</pre>
+<p>Combine conditions with and, or, not.</p>
+<pre>
+is_digit fn (c byte) -&gt; bool {
+  and (c &gt;= '0'), (c &lt;= '9');
+}
+
+is_blank fn (c byte) -&gt; bool {
+  or (c == ' '), (c == 9), (c == 10);
+}
+</pre>
+<p>Convert between number types with as.</p>
+<pre>
+ratio fn (part int, whole int) -&gt; double {
+  (part as double) / (whole as double);
+}
+</pre>
+<p>Return two results through var parameters.</p>
+<pre>
+divide fn (a int, b int, var q int, var r int) {
+  q = a / b;
+  r = a mod b;
+}
+
+use fn ()
+  var q int, r int {
+  divide 17, 5, var q, var r;
+}
+</pre>
+<h2 id="2-text">2. Text</h2>
+<p>Print mixed values on one line.</p>
+<pre>
+import 'core/devices/tty
+
+report fn (name string, score int, ok bool) {
+  tty.say name, &quot;: &quot;, score, &quot; ok=&quot;, ok;
+}
+</pre>
+<p>Print without a line break.</p>
+<pre>
+import 'core/devices/tty
+
+progress fn (done int, total int) {
+  tty.sayin done, &quot;/&quot;, total, &quot; &quot;;
+}
+</pre>
+<p>Format values into a buffer.</p>
+<pre>
+import 'core/base/text, 'core/base/bytes
+
+label fn (var buffer [32]byte, n int) -&gt; string
+  ! bytes.fault {
+  text.format var buffer, &quot;item #&quot;, n;
+}
+</pre>
+<p>Parse a number.</p>
+<pre>
+import 'core/base/signed, 'core/base/boolean, 'core/base/bytes
+
+number fn (s string) -&gt; int
+  ! boolean.fault | bytes.fault {
+  signed.parse s;
+}
+</pre>
+<p>Parse with a fallback instead of a failure.</p>
+<pre>
+import 'core/base/signed, 'core/base/boolean, 'core/base/bytes
+
+number_or fn (s string, fallback int) -&gt; int {
+  return signed.parse s;
+on boolean.fault | bytes.fault:
+  return fallback;
+}
+</pre>
+<p>Compare strings.</p>
+<pre>
+import 'core/base/bytes
+
+is_yes fn (answer string) -&gt; bool {
+  bytes.equal answer, &quot;yes&quot;;
+}
+</pre>
+<p>Find a byte in a string.</p>
+<pre>
+import 'core/base/bytes
+
+has_dot fn (name string) -&gt; bool {
+  (bytes.find name, '.') &gt;= 0;
+}
+</pre>
+<p>Walk the bytes of a string.</p>
+<pre>
+count_spaces fn (s string) -&gt; int
+  var i int, n int {
+  for i &lt; (length s); i += 1 {
+    if s[i] == ' ' { n += 1; }
+  }
+  n;
+}
+</pre>
+<p>Take a part of a string.</p>
+<pre>
+first_word fn (s string) -&gt; const string
+  var i int {
+  for and (i &lt; (length s)), (s[i] != ' ') {
+    i += 1;
+  }
+  s[0:i];
+}
+</pre>
+<p>Upper-case a string in place.</p>
+<pre>
+shout fn (var s string)
+  var i int {
+  for i &lt; (length s); i += 1 {
+    if and (s[i] &gt;= 'a'), (s[i] &lt;= 'z') {
+      s[i] = s[i] - 32;
+    }
+  }
+}
+</pre>
+<p>Read a line from the operator.</p>
+<pre>
+import 'core/devices/tty
+
+greet fn ()
+  var buffer [64]byte, name string {
+  name = tty.ask &quot;name? &quot;, var buffer;
+  tty.say &quot;hello, &quot;, name;
+}
+</pre>
+<h2 id="3-numbers">3. Numbers</h2>
+<p>Clamp a value.</p>
+<pre>
+import 'core/base/signed
+
+clamp fn (x int, lo int, hi int) -&gt; int {
+  signed.max lo, (signed.min x, hi);
+}
+</pre>
+<p>Compute a distance.</p>
+<pre>
+import 'core/base/float
+
+distance fn (x double, y double) -&gt; double {
+  float.sqrt ((x * x) + (y * y));
+}
+</pre>
+<p>Round a real to an integer.</p>
+<pre>
+import 'core/base/signed
+
+percent fn (part double) -&gt; int {
+  signed.round (part * 100.0);
+}
+</pre>
+<p>Format a real.</p>
+<pre>
+import 'core/base/float, 'core/base/bytes
+
+show fn (var buffer [32]byte, x double) -&gt; string
+  ! bytes.fault {
+  float.format var buffer, x;
+}
+</pre>
+<p>Roll a die.</p>
+<pre>
+import 'core/base/random, 'core/system/clock, 'core/base/boolean
+
+roll fn () -&gt; int
+  ! boolean.fault
+  var r random.state {
+  random.seed var r, ((clock.now) as int);
+  random.range var r, 1, 6;
+}
+</pre>
+<h2 id="4-arrays-and-slices">4. Arrays and slices</h2>
+<p>Sum an array.</p>
+<pre>
+sum fn (xs []int) -&gt; int
+  var i int, total int {
+  for i &lt; (length xs); i += 1 {
+    total += xs[i];
+  }
+  total;
+}
+</pre>
+<p>Fill a local array, then pass it as a slice.</p>
+<pre>
+sum fn (xs []int) -&gt; int ...
+
+squares fn () -&gt; int
+  var a [10]int, i int {
+  for i &lt; 10; i += 1 {
+    a[i] = i * i;
+  }
+  sum a;
+}
+
+sum fn (xs []int) -&gt; int
+  var i int, total int {
+  for i &lt; (length xs); i += 1 {
+    total += xs[i];
+  }
+  total;
+}
+</pre>
+<p>Look up a constant table. The first element gives the
+element type; a prefix such as []byte writes another one.</p>
+<pre>
+days = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31,
+  30, 31]
+names = [&quot;jan&quot;, &quot;feb&quot;, &quot;mar&quot;]
+widths = []byte [3, 5, 8]
+
+days_in fn (month int) -&gt; int {
+  days[month - 1];
+}
+</pre>
+<p>Find the largest element.</p>
+<pre>
+largest fn (xs []int) -&gt; int
+  var i int, best int {
+  best = xs[0];
+  i = 1;
+  for i &lt; (length xs); i += 1 {
+    if xs[i] &gt; best { best = xs[i]; }
+  }
+  best;
+}
+</pre>
+<p>Reverse an array in place.</p>
+<pre>
+reverse fn (var xs []int)
+  var i int, j int, t int {
+  j = (length xs) - 1;
+  for i &lt; j; i += 1 {
+    t = xs[i];
+    xs[i] = xs[j];
+    xs[j] = t;
+    j -= 1;
+  }
+}
+</pre>
+<p>Copy and clear bytes.</p>
+<pre>
+import 'core/base/bytes
+
+backup fn (src string, var dst [64]byte) {
+  bytes.clear var dst;
+  bytes.copy src, var dst;
+}
+</pre>
+<p>Take any number of arguments.</p>
+<pre>
+total fn (xs ...int) -&gt; int
+  var i int, t int {
+  for i &lt; (length xs); i += 1 {
+    t += xs[i];
+  }
+  t;
+}
+
+use fn () -&gt; int {
+  total 1, 2, 3, 4;
+}
+</pre>
+<h2 id="5-records-enums-and-unions">5. Records, enums and unions</h2>
+<p>Declare and use a record. A name and its structure make a
+type; no keyword.</p>
+<pre>
+point record { x int, y int }
+
+manhattan fn (a point, b point) -&gt; int
+  var dx int, dy int {
+  dx = a.x - b.x;
+  dy = a.y - b.y;
+  if dx &lt; 0 { dx = -dx; }
+  if dy &lt; 0 { dy = -dy; }
+  dx + dy;
+}
+</pre>
+<p>Change a record through a var parameter.</p>
+<pre>
+point record { x int, y int }
+
+move_by fn (var p point, dx int, dy int) {
+  p.x += dx;
+  p.y += dy;
+}
+</pre>
+<p>Build a record into an into parameter.</p>
+<pre>
+point record { x int, y int }
+
+origin fn (into p point) {
+  p.x = 0;
+  p.y = 0;
+}
+</pre>
+<p>Keep a constant record. Its type comes first, as a prefix.</p>
+<pre>
+point record { x int, y int }
+
+corner = point {x: 79, y: 24}
+</pre>
+<p>Dispatch on an enum.</p>
+<pre>
+light enum red | amber | green
+
+next fn (l light) -&gt; light
+  var r light {
+  when l {
+  * light.red: r = light.green;
+  * light.green: r = light.amber;
+  * light.amber: r = light.red;
+  }
+  r;
+}
+</pre>
+<p>Dispatch on a union.</p>
+<pre>
+shape union circle { r double }
+  | rect { w double, h double }
+
+area fn (s shape) -&gt; double {
+  when s {
+  * shape.circle: return 3.14159 * s.r * s.r;
+  * shape.rect: return s.w * s.h;
+  }
+  0.0;
+}
+</pre>
+<p>Build a union value through its subtype.</p>
+<pre>
+shape union circle { r double }
+  | rect { w double, h double }
+
+area fn (s shape) -&gt; double {
+  guard s shape.rect | return 0.0;
+  s.w * s.h;
+}
+
+unit_square fn () -&gt; double
+  var r shape.rect {
+  r.w = 1.0;
+  r.h = 1.0;
+  area r;
+}
+</pre>
+<p>Give a number its own type.</p>
+<pre>
+meters from int
+meters.mile = 1609
+
+walk fn (steps int) -&gt; meters {
+  (steps * 3 / 4) as meters;
+}
+</pre>
+<h2 id="6-failures">6. Failures</h2>
+<p>Declare a failure and raise one of its kinds.</p>
+<pre>
+fault failure { empty, too_long }
+
+check fn (s string)
+  ! fault {
+  if (length s) == 0 { raise fault.empty; }
+  if (length s) &gt; 64 { raise fault.too_long; }
+}
+</pre>
+<p>Handle a kind, let the rest propagate.</p>
+<pre>
+fault failure { empty, too_long }
+
+check fn (s string)
+  ! fault ...
+
+size_of fn (s string) -&gt; int
+  ! fault {
+  check s;
+  return length s;
+on fault.empty:
+  return 0;
+}
+
+check fn (s string)
+  ! fault {
+  if (length s) == 0 { raise fault.empty; }
+  if (length s) &gt; 64 { raise fault.too_long; }
+}
+</pre>
+<p>Catch anything with the unnamed handler.</p>
+<pre>
+import 'core/devices/tty
+
+safely fn (work fn () ! ...) {
+  work;
+on ...:
+  tty.say &quot;work failed&quot;;
+}
+</pre>
+<p>Name the failure that was caught.</p>
+<pre>
+import 'core/devices/tty
+
+explain fn (work fn () ! ...) {
+  work;
+on ... with f:
+  tty.say &quot;failed: &quot;, (mirror.fault_name_of f), &quot;.&quot;,
+    (mirror.fault_kind_of f);
+}
+</pre>
+<p>Clean up on every exit with defer.</p>
+<pre>
+import 'core/devices/tty
+
+framed fn (work fn () ! ...)
+  ! ... {
+  tty.say &quot;begin&quot;;
+  defer tty.say &quot;end&quot;;
+  work;
+}
+</pre>
+<p>Narrow an optional pointer with guard.</p>
+<pre>
+node record { next ^node|none, value int }
+
+first_value fn (head ^node|none) -&gt; int {
+  guard head | return -1;
+  head^.value;
+}
+</pre>
+<h2 id="7-bits">7. Bits</h2>
+<p>Test and set single bits.</p>
+<pre>
+toggle_low fn (flags dword)
+  var f dword {
+  f = flags;
+  f[0] = not f[0];
+  f;
+}
+</pre>
+<p>Read and write a bit field.</p>
+<pre>
+high_nibble fn (b byte) -&gt; byte {
+  b[4:8];
+}
+
+with_high_nibble fn (b byte, v byte) -&gt; byte
+  var r byte {
+  r = b;
+  r[4:8] = v;
+  r;
+}
+</pre>
+<p>Mask with and, combine with or.</p>
+<pre>
+low_byte fn (v dword) -&gt; dword {
+  and v, (0xff as dword);
+}
+
+merge fn (a dword, b dword) -&gt; dword {
+  or a, b;
+}
+</pre>
+<p>Shift, xor and count bits.</p>
+<pre>
+import 'core/base/bit
+
+parity fn (v dword) -&gt; bool {
+  ((bit.ones v) mod 2) == 1;
+}
+
+mix fn (a dword, b dword) -&gt; dword {
+  bit.xor (bit.shil a, 7), (bit.shir b, 3);
+}
+</pre>
+<h2 id="8-memory">8. Memory</h2>
+<p>Claim and release a heap block.</p>
+<pre>
+import 'core/system/heap
+
+grid [64]int
+
+scratch fn ()
+  ! heap.fault
+  var g ^grid {
+  g = heap.claim grid;
+  defer heap.release from g;
+  g^[0] = 1;
+}
+</pre>
+<p>Push onto a linked list.</p>
+<pre>
+import 'core/system/heap
+
+node record { next ^node|none, value int }
+
+push fn (from head ^node|none, v int) -&gt; ^node
+  ! heap.fault
+  var n ^node {
+  n = heap.claim node;
+  n^.next = head;
+  n^.value = v;
+  n;
+}
+</pre>
+<p>Walk a linked list without taking it.</p>
+<pre>
+node record { next ^node|none, value int }
+
+sum fn (head ^node|none) -&gt; int
+  var total int {
+  for with n = head; n.next {
+    total += n.value;
+  }
+  total;
+}
+</pre>
+<p>Alias a deep place once with with.</p>
+<pre>
+cell record { hits int, misses int }
+
+record_hit fn (var cells [16]cell, i int) {
+  with c = cells[i];
+  c.hits += 1;
+}
+</pre>
+<p>Read memory through a raw address.</p>
+<pre>
+import 'core/base/octet
+
+first_byte fn (at int) -&gt; byte {
+  octet.peek (at as address);
+}
+</pre>
+<h2 id="9-collections">9. Collections</h2>
+<p>Grow an array of numbers.</p>
+<pre>
+import 'core/collections/array, 'core/system/heap
+
+evens fn (var a array.ty)
+  ! heap.fault
+  var i int, cell [1]int {
+  array.create var a, 64;
+  for i &lt; 10; i += 1 {
+    cell[0] = i * 2;
+    array.append var a, (cell as []byte);
+  }
+}
+
+at fn (a array.ty, i int) -&gt; int
+  var xs const []int {
+  xs = (array.view a) as []int;
+  xs[i];
+}
+</pre>
+<p>Map keys to values with a hash table.</p>
+<pre>
+import 'core/collections/table, 'core/system/heap,
+  'core/base/boolean
+
+key record { id int }
+value record { score int }
+
+score fn (t table.ty, id int) -&gt; int
+  var k key, found string {
+  k.id = id;
+  found = table.get t, (k as []byte);
+  if (length found) == 0 { return 0; }
+  found as int;
+}
+
+remember fn (var t table.ty, id int, score int)
+  ! heap.fault | boolean.fault
+  var k key, v value {
+  k.id = id;
+  v.score = score;
+  table.put var t, (k as []byte), (v as []byte);
+}
+</pre>
+<p>Mark seen items in a bitset.</p>
+<pre>
+import 'core/collections/bitset, 'core/system/heap
+
+dedup fn (xs []int) -&gt; int
+  ! heap.fault
+  var seen bitset.ty, i int, n int {
+  bitset.create into seen, 1024;
+  defer bitset.dispose from seen;
+  for i &lt; (length xs); i += 1 {
+    if not (bitset.test seen, xs[i]) {
+      bitset.set var seen, xs[i];
+      n += 1;
+    }
+  }
+  n;
+}
+</pre>
+<h2 id="10-files-and-directories">10. Files and directories</h2>
+<p>Check that a file exists.</p>
+<pre>
+import 'core/storage/file
+
+has_config fn () -&gt; bool {
+  file.is_exist &quot;config.dano&quot;;
+}
+</pre>
+<p>Print a file.</p>
+<pre>
+import 'core/storage/file, 'core/devices/tty
+
+cat fn (path string)
+  ! file.fault
+  var buffer [512]byte, view []byte, final f file.id {
+  f = file.open path;
+  defer file.close from f;
+  view = file.read f, var buffer;
+  for (length view) &gt; 0; view = file.read f,
+    var buffer {
+    tty.sayin view;
+  }
+}
+</pre>
+<p>Write a new file.</p>
+<pre>
+import 'core/storage/file
+
+save fn (path string, data string) ! file.fault
+  var f file.id {
+  f = file.create path;
+  defer file.close from f;
+  file.write f, data;
+}
+</pre>
+<p>Append a line to a log.</p>
+<pre>
+import 'core/storage/file
+
+log fn (line string)
+  ! file.fault
+  var newline [1]byte
+  final f file.id {
+  f = if file.is_exist 'log.txt {
+    file.append 'log.txt;
+  } else {
+    file.create 'log.txt;
+  };
+  defer file.close from f;
+  newline[0] = 10;
+  file.write f, line;
+  file.write f, newline;
+}
+</pre>
+<p>List a directory.</p>
+<pre>
+import 'core/storage/directory, 'core/storage/file, 'core/devices/tty
+
+ls fn (path string) ! file.fault
+  var e directory.entry, more bool
+  final h directory.id {
+  h = directory.open path;
+  defer directory.close from h;
+  more = directory.next h, var e;
+  for more; more = directory.next h, var e {
+    tty.say e.name[0:e.length];
+  }
+}
+</pre>
+<p>Build a path.</p>
+<pre>
+import 'core/storage/path, 'core/devices/tty
+
+show_join fn (dir string, name string)
+  var buffer [256]byte, n int {
+  n = path.join var buffer, dir, name;
+  tty.say buffer[0:n];
+}
+</pre>
+<h2 id="11-time">11. Time</h2>
+<p>Measure elapsed time.</p>
+<pre>
+import 'core/system/clock, 'core/devices/tty
+
+timed fn (work fn ())
+  var t clock.tick {
+  t = clock.now;
+  work;
+  tty.say (clock.elapsed_ms t), &quot; ms&quot;;
+}
+</pre>
+<p>Print the date and time.</p>
+<pre>
+import 'core/system/time, 'core/devices/tty, 'core/base/bytes
+
+now fn ()
+  ! bytes.fault
+  var buffer [64]byte {
+  tty.say (time.format var buffer, time.now);
+}
+</pre>
+<p>Read the calendar fields.</p>
+<pre>
+import 'core/system/time
+
+year fn () -&gt; int
+  var cal time.calendar {
+  time.decompose time.now, var cal;
+  cal.year;
+}
+</pre>
+<p>Pause and let other tasks run.</p>
+<pre>
+import 'core/system/task
+
+wait_a_second fn () {
+  task.sleep 1000;
+}
+</pre>
+<h2 id="12-screen-and-keys">12. Screen and keys</h2>
+<p>Draw a box and wait for esc.</p>
+<pre>
+import 'core/devices/screen, 'core/system/event, 'core/system/heap,
+  'core/base/boolean
+
+show fn ()
+  ! heap.fault | boolean.fault
+  var pump event.pump, k screen.key,
+  final sf ^screen.surface {
+  sf = heap.claim screen.surface;
+  defer heap.release from sf;
+  screen.snapshot;
+  defer screen.restore;
+  screen.clear var sf^;
+  screen.frame var sf^, 10, 5, 30, 8;
+  screen.print var sf^, 12, 7, &quot;press esc&quot;;
+  screen.blit sf^, screen.normal;
+  event.keys var pump;
+  for {
+    if (event.next var pump, var k) == event.kind.key {
+      if k.code == screen.key_esc { break; }
+    }
+  }
+}
+</pre>
+<p>Dispatch on key chords.</p>
+<pre>
+import 'core/devices/screen
+
+quit = screen.ctrl_q
+save = screen.ctrl_s
+
+act fn (k screen.key) -&gt; int
+  var r int {
+  when k.chord {
+  * quit: r = 1;
+  * save: r = 2;
+  * else: r = 0;
+  }
+  r;
+}
+</pre>
+<h2 id="13-network">13. Network</h2>
+<p>Send a datagram.</p>
+<pre>
+import 'core/net/socket, 'core/net/ipv4, 'core/base/bytes
+
+ping fn (port int)
+  ! socket.fault | bytes.fault
+  var host int
+  final s socket.id {
+  host = ipv4.parse '10.0.2.2;
+  s = socket.open 0;
+  defer socket.close from s;
+  socket.send s, (socket.endpoint host, port), 'ping;
+}
+</pre>
+<p>Receive a datagram.</p>
+<pre>
+import 'core/net/socket, 'core/devices/tty
+
+listen fn (port int)
+  ! socket.fault
+  var buffer [512]byte, n int, from_ep int,
+  final s socket.id {
+  s = socket.open port;
+  defer socket.close from s;
+  n = socket.receive s, var buffer, var from_ep;
+  tty.say &quot;got &quot;, n, &quot; bytes from port &quot;,
+    (socket.port_of from_ep);
+}
+</pre>
+<h2 id="14-hashing-and-crypto">14. Hashing and crypto</h2>
+<p>Hash bytes.</p>
+<pre>
+import 'core/crypto/rapidhash
+
+fingerprint fn (data string) -&gt; dword {
+  rapidhash.of data;
+}
+</pre>
+<p>Take a cryptographic digest.</p>
+<pre>
+import 'core/crypto/ascon, 'core/base/boolean
+
+digest fn (data string, var out [32]byte)
+  ! boolean.fault {
+  ascon.hash data, var out;
+}
+</pre>
+<h2 id="15-services-and-tests">15. Services and tests</h2>
+<p>Run a periodic background service.</p>
+<pre>
+import 'core/system/service, 'core/system/heap, 'core/devices/tty
+
+beat fn () {
+  tty.say &quot;tick&quot;;
+}
+
+halt fn () {}
+
+start fn ()
+  ! service.fault | heap.fault {
+  service.periodic &quot;beat&quot;, fn beat, 1000, fn halt;
+}
+</pre>
+<p>Write a spec for a module.</p>
+<pre>
+import 'core/tools/spec
+
+verify fn ()
+  ! spec.fault
+
+...
+
+square fn (x int) -&gt; int {
+  x * x;
+}
+
+verify fn ()
+  ! spec.fault {
+  spec.expect ((square 3) == 9);
+  spec.expect ((square -2) == 4);
+}
+</pre>
+</body>
+</html>

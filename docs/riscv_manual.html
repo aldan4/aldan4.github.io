@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>RISC-V manual</title>
+<meta name="author" content="ortfero">
+<meta name="year" content="2026">
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<h1>RISC-V manual</h1>
+<p class="subtitle">The instruction set cheatsheet</p>
+<address>ortfero</address>
+<p>The RISC-V instruction set as the aldan machine runs it: RV64
+with M, F, D, Zicsr, Zifencei, Zba, Zbb, Zbs, Sdtrig and a
+subset of V, in machine mode. Each instruction is listed with
+what it does; whatever aldan leaves out is marked. Opcodes,
+CSR numbers and codes are hexadecimal; bit positions, counts
+and sizes are decimal. The devices and the memory map are in
+the aldan codex.</p>
+<p><a href="aldan_manual.moff">Aldan manual</a></p>
+<h2 id="architecture">Architecture</h2>
+<h3>Extensions</h3>
+<table>
+<thead>
+<tr><th>Name</th><th>What it adds</th><th>Aldan</th></tr>
+</thead>
+<tbody>
+<tr><td>I</td><td>The base integer set</td><td>Yes</td></tr>
+<tr><td>M</td><td>Multiply and divide</td><td>Yes</td></tr>
+<tr><td>A</td><td>Atomics: LR/SC and AMO</td><td>No</td></tr>
+<tr><td>F</td><td>Single-precision float</td><td>Yes</td></tr>
+<tr><td>D</td><td>Double-precision float</td><td>Yes</td></tr>
+<tr><td>C</td><td>16-bit compressed encodings</td><td>No</td></tr>
+<tr><td>V</td><td>Vectors</td><td>Subset</td></tr>
+<tr><td>Zicsr</td><td>CSR access</td><td>Yes</td></tr>
+<tr><td>Zifencei</td><td>fence.i</td><td>A no-op</td></tr>
+<tr><td>Zicntr</td><td>Counters: time, cycle, instret</td><td>Partial</td></tr>
+<tr><td>Zba</td><td>Address generation</td><td>Yes</td></tr>
+<tr><td>Zbb</td><td>Basic bit manipulation</td><td>Yes</td></tr>
+<tr><td>Zbs</td><td>Single-bit operations</td><td>Yes</td></tr>
+<tr><td>Sdtrig</td><td>Debug triggers</td><td>Yes</td></tr>
+</tbody>
+</table>
+<p>Aldan has time and instret but not cycle. G is shorthand for
+IMAFD with Zicsr and Zifencei, so aldan is
+rv64imfdv_zicsr_zifencei_zba_zbb_zbs: G without A, plus V.</p>
+<h3>Privilege levels</h3>
+<table>
+<thead>
+<tr><th>Level</th><th>Name</th><th>Aldan</th></tr>
+</thead>
+<tbody>
+<tr><td>3</td><td>Machine</td><td>The only one</td></tr>
+<tr><td>1</td><td>Supervisor</td><td>Absent: no paging, no satp</td></tr>
+<tr><td>0</td><td>User</td><td>Absent: no PMP</td></tr>
+</tbody>
+</table>
+<h3>Integer registers</h3>
+<p>32 registers of XLEN = 64 bits, x0 to x31, and the pc. x0
+always reads 0 and drops writes. The ABI names and who saves
+them across a call:</p>
+<table>
+<thead>
+<tr><th>Register</th><th>ABI</th><th>Use</th><th>Saved</th></tr>
+</thead>
+<tbody>
+<tr><td>x0</td><td>zero</td><td>Always 0</td><td>—</td></tr>
+<tr><td>x1</td><td>ra</td><td>Return address</td><td>Caller</td></tr>
+<tr><td>x2</td><td>sp</td><td>Stack pointer</td><td>Callee</td></tr>
+<tr><td>x3</td><td>gp</td><td>Global pointer</td><td>—</td></tr>
+<tr><td>x4</td><td>tp</td><td>Thread pointer</td><td>—</td></tr>
+<tr><td>x5-x7</td><td>t0-t2</td><td>Temporaries</td><td>Caller</td></tr>
+<tr><td>x8</td><td>s0, fp</td><td>Saved, frame pointer</td><td>Callee</td></tr>
+<tr><td>x9</td><td>s1</td><td>Saved</td><td>Callee</td></tr>
+<tr><td>x10-x11</td><td>a0-a1</td><td>Arguments, results</td><td>Caller</td></tr>
+<tr><td>x12-x17</td><td>a2-a7</td><td>Arguments</td><td>Caller</td></tr>
+<tr><td>x18-x27</td><td>s2-s11</td><td>Saved</td><td>Callee</td></tr>
+<tr><td>x28-x31</td><td>t3-t6</td><td>Temporaries</td><td>Caller</td></tr>
+</tbody>
+</table>
+<ul>
+<li>Integer arguments go in a0 to a7, results in a0 and a1; whatever does not fit goes on the stack.</li>
+<li>sp is 16-aligned at every call, and the stack grows down.</li>
+<li>A 32-bit value is kept sign-extended to 64 bits, even an unsigned one.</li>
+</ul>
+<h3>Float registers</h3>
+<p>32 registers f0 to f31 of FLEN = 64 bits, and fcsr.</p>
+<table>
+<thead>
+<tr><th>Register</th><th>ABI</th><th>Use</th><th>Saved</th></tr>
+</thead>
+<tbody>
+<tr><td>f0-f7</td><td>ft0-ft7</td><td>Temporaries</td><td>Caller</td></tr>
+<tr><td>f8-f9</td><td>fs0-fs1</td><td>Saved</td><td>Callee</td></tr>
+<tr><td>f10-f11</td><td>fa0-fa1</td><td>Arguments, results</td><td>Caller</td></tr>
+<tr><td>f12-f17</td><td>fa2-fa7</td><td>Arguments</td><td>Caller</td></tr>
+<tr><td>f18-f27</td><td>fs2-fs11</td><td>Saved</td><td>Callee</td></tr>
+<tr><td>f28-f31</td><td>ft8-ft11</td><td>Temporaries</td><td>Caller</td></tr>
+</tbody>
+</table>
+<p>A single held in a 64-bit register is NaN-boxed: the upper 32
+bits are all ones. A single that is not boxed reads as the
+canonical NaN.</p>
+<h3>Vector registers</h3>
+<p>32 registers v0 to v31 of VLEN = 256 bits on aldan, and the
+CSRs vl, vtype, vstart, vxrm and vxsat. v0 holds the mask of a
+masked instruction. All of them are caller-saved.</p>
+<h3>Memory</h3>
+<ul>
+<li>One byte-addressed space of 2^64 bytes, little-endian.</li>
+<li>Only loads and stores touch memory; every other instruction works on registers.</li>
+<li>An instruction is 32 bits and 4-aligned: without C, a jump or branch to a pc that is not 4-aligned traps (cause 0). Data may be misaligned, at the cost of a trap on some machines; aldan never traps on either.</li>
+<li>The model is RVWMO: another hart or a device may see stores in another order until a fence. Aldan has one hart and devices that finish inside the store, so a fence is never needed there.</li>
+</ul>
+<h3>Instruction formats</h3>
+<p>Every instruction is one 32-bit word. The opcode is bits 6-0,
+rd 11-7, funct3 14-12, rs1 19-15 and rs2 24-20, in every
+format that has them.</p>
+<pre>
+       31-25     24-20   19-15  14-12    11-7     6-0
+R  |   funct7  |  rs2  |  rs1  |  f3 |    rd   | opcode |
+I  |      imm 11:0     |  rs1  |  f3 |    rd   | opcode |
+S  |  imm 11:5 |  rs2  |  rs1  |  f3 | imm 4:0 | opcode |
+B  |  12,10:5  |  rs2  |  rs1  |  f3 |  4:1,11 | opcode |
+U  |            imm 31:12            |    rd   | opcode |
+J  |       imm 20,10:1,11,19:12      |    rd   | opcode |
+R4 |  rs3,fmt  |  rs2  |  rs1  |  rm |    rd   | opcode |
+V  |   f6,vm   |  vs2  |  vs1  |  f3 |    vd   |   57   |
+</pre>
+<ul>
+<li>Every immediate is sign-extended from its top bit, which is always bit 31 of the word.</li>
+<li>I and S hold 12 bits: -2048 to 2047.</li>
+<li>B and J encode even offsets: a branch reaches 4 KB each way, jal 1 MB.</li>
+<li>U is the upper 20 bits of a 32-bit value: lui sets it, addi adds the low 12, and a negative low part needs the upper part one higher.</li>
+</ul>
+<h3>Major opcodes</h3>
+<table>
+<thead>
+<tr><th>Opcode</th><th>Name</th><th>Opcode</th><th>Name</th></tr>
+</thead>
+<tbody>
+<tr><td>03</td><td>LOAD</td><td>33</td><td>OP</td></tr>
+<tr><td>07</td><td>LOAD-FP</td><td>37</td><td>LUI</td></tr>
+<tr><td>0F</td><td>MISC-MEM</td><td>3B</td><td>OP-32</td></tr>
+<tr><td>13</td><td>OP-IMM</td><td>43-4F</td><td>MADD, MSUB, NMSUB, NMADD</td></tr>
+<tr><td>17</td><td>AUIPC</td><td>53</td><td>OP-FP</td></tr>
+<tr><td>1B</td><td>OP-IMM-32</td><td>57</td><td>OP-V</td></tr>
+<tr><td>23</td><td>STORE</td><td>63</td><td>BRANCH</td></tr>
+<tr><td>27</td><td>STORE-FP</td><td>67</td><td>JALR</td></tr>
+<tr><td></td><td></td><td>6F</td><td>JAL</td></tr>
+<tr><td></td><td></td><td>73</td><td>SYSTEM</td></tr>
+</tbody>
+</table>
+<p>LOAD-FP and STORE-FP carry the vector loads and stores too,
+told apart by the width field.</p>
+<h2 id="base-integer-set">Base integer set</h2>
+<h3>Arithmetic and logic</h3>
+<table>
+<thead>
+<tr><th>Instruction</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>add rd, rs1, rs2</td><td>rd = rs1 + rs2</td></tr>
+<tr><td>sub rd, rs1, rs2</td><td>rd = rs1 - rs2</td></tr>
+<tr><td>addi rd, rs1, imm</td><td>rd = rs1 + imm</td></tr>
+<tr><td>and, or, xor</td><td>Bitwise, rd = rs1 op rs2</td></tr>
+<tr><td>andi, ori, xori</td><td>Bitwise with imm</td></tr>
+<tr><td>slt rd, rs1, rs2</td><td>rd = 1 if rs1 &lt; rs2 signed, else 0</td></tr>
+<tr><td>sltu</td><td>The same, unsigned</td></tr>
+<tr><td>slti, sltiu</td><td>The same against imm; sltiu still sign-extends imm</td></tr>
+<tr><td>lui rd, imm</td><td>rd = imm &lt;&lt; 12</td></tr>
+<tr><td>auipc rd, imm</td><td>rd = pc + (imm &lt;&lt; 12)</td></tr>
+</tbody>
+</table>
+<p>Overflow is ignored: there are no flags and no carry. A carry
+out of an add is sltu rd, sum, rs1.</p>
+<h3>Shifts</h3>
+<table>
+<thead>
+<tr><th>Instruction</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>sll rd, rs1, rs2</td><td>Shift left by rs2 and 63</td></tr>
+<tr><td>srl</td><td>Logical shift right</td></tr>
+<tr><td>sra</td><td>Arithmetic shift right</td></tr>
+<tr><td>slli, srli, srai</td><td>By a 6-bit shamt</td></tr>
+</tbody>
+</table>
+<h3>32-bit operations</h3>
+<p>Each works on the low 32 bits and sign-extends the 32-bit
+result to 64.</p>
+<table>
+<thead>
+<tr><th>Instruction</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>addw, subw</td><td>32-bit add, subtract</td></tr>
+<tr><td>addiw rd, rs1, imm</td><td>32-bit add of imm; addiw rd, rs, 0 is sext.w</td></tr>
+<tr><td>sllw, srlw, sraw</td><td>32-bit shifts by rs2 and 31</td></tr>
+<tr><td>slliw, srliw, sraiw</td><td>By a 5-bit shamt</td></tr>
+</tbody>
+</table>
+<h3>Loads and stores</h3>
+<table>
+<thead>
+<tr><th>Instruction</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>ld rd, off(rs1)</td><td>Load 64 bits from rs1 + off</td></tr>
+<tr><td>lw, lh, lb</td><td>Load 32, 16, 8 bits, sign-extended</td></tr>
+<tr><td>lwu, lhu, lbu</td><td>The same, zero-extended</td></tr>
+<tr><td>sd rs2, off(rs1)</td><td>Store 64 bits at rs1 + off</td></tr>
+<tr><td>sw, sh, sb</td><td>Store the low 32, 16, 8 bits</td></tr>
+</tbody>
+</table>
+<h3>Branches and jumps</h3>
+<table>
+<thead>
+<tr><th>Instruction</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>beq rs1, rs2, label</td><td>Branch if rs1 = rs2</td></tr>
+<tr><td>bne</td><td>If rs1 is not rs2</td></tr>
+<tr><td>blt, bge</td><td>If rs1 &lt; rs2, rs1 &gt;= rs2, signed</td></tr>
+<tr><td>bltu, bgeu</td><td>The same, unsigned</td></tr>
+<tr><td>jal rd, label</td><td>rd = pc + 4, jump to label</td></tr>
+<tr><td>jalr rd, off(rs1)</td><td>rd = pc + 4, pc = (rs1 + off) with bit 0 cleared</td></tr>
+</tbody>
+</table>
+<p>jalr reads rs1 before it writes rd, so jalr ra, 0(ra) works.
+auipc and jalr together reach any pc within 2 GB.</p>
+<h3>System</h3>
+<table>
+<thead>
+<tr><th>Instruction</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>ecall</td><td>Trap to the environment: mcause B from machine mode</td></tr>
+<tr><td>ebreak</td><td>Trap as a breakpoint: mcause 3</td></tr>
+<tr><td>fence pred, succ</td><td>Order memory: pred before succ (i, o, r, w); a no-op on aldan</td></tr>
+<tr><td>fence.i</td><td>Make stored code visible to fetch; a no-op on aldan</td></tr>
+<tr><td>mret</td><td>Return from a machine trap</td></tr>
+<tr><td>wfi</td><td>Wait for an interrupt</td></tr>
+</tbody>
+</table>
+<h2 id="pseudo-instructions">Pseudo-instructions</h2>
+<p>The assembler's shorthands, and what they stand for.</p>
+<table>
+<thead>
+<tr><th>Pseudo</th><th>Is</th></tr>
+</thead>
+<tbody>
+<tr><td>nop</td><td>addi zero, zero, 0</td></tr>
+<tr><td>li rd, imm</td><td>lui and addi, or a longer sequence for 64 bits</td></tr>
+<tr><td>la rd, symbol</td><td>auipc and addi</td></tr>
+<tr><td>mv rd, rs</td><td>addi rd, rs, 0</td></tr>
+<tr><td>not rd, rs</td><td>xori rd, rs, -1</td></tr>
+<tr><td>neg rd, rs</td><td>sub rd, zero, rs</td></tr>
+<tr><td>negw rd, rs</td><td>subw rd, zero, rs</td></tr>
+<tr><td>sext.w rd, rs</td><td>addiw rd, rs, 0</td></tr>
+<tr><td>zext.b rd, rs</td><td>andi rd, rs, 255</td></tr>
+<tr><td>seqz rd, rs</td><td>sltiu rd, rs, 1</td></tr>
+<tr><td>snez rd, rs</td><td>sltu rd, zero, rs</td></tr>
+<tr><td>sltz, sgtz</td><td>slt rd, rs, zero; slt rd, zero, rs</td></tr>
+<tr><td>beqz, bnez rs, label</td><td>beq, bne against zero</td></tr>
+<tr><td>blez, bgez, bltz, bgtz</td><td>The signed branches against zero</td></tr>
+<tr><td>bgt, ble, bgtu, bleu</td><td>blt, bge, bltu, bgeu with the operands swapped</td></tr>
+<tr><td>j label</td><td>jal zero, label</td></tr>
+<tr><td>jal label</td><td>jal ra, label</td></tr>
+<tr><td>jr rs</td><td>jalr zero, 0(rs)</td></tr>
+<tr><td>jalr rs</td><td>jalr ra, 0(rs)</td></tr>
+<tr><td>ret</td><td>jalr zero, 0(ra)</td></tr>
+<tr><td>call symbol</td><td>auipc ra and jalr ra: any distance within 2 GB</td></tr>
+<tr><td>tail symbol</td><td>auipc t1 and jalr zero: a jump that does not return here</td></tr>
+</tbody>
+</table>
+<h2 id="m-multiply-and-divide">M: multiply and divide</h2>
+<table>
+<thead>
+<tr><th>Instruction</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>mul rd, rs1, rs2</td><td>Low 64 bits of rs1 * rs2</td></tr>
+<tr><td>mulh</td><td>High 64 bits, signed * signed</td></tr>
+<tr><td>mulhu</td><td>High 64 bits, unsigned</td></tr>
+<tr><td>mulhsu</td><td>High 64 bits, signed rs1 * unsigned rs2</td></tr>
+<tr><td>div, divu</td><td>Quotient, signed, unsigned; rounds toward zero</td></tr>
+<tr><td>rem, remu</td><td>Remainder, signed, unsigned; takes the sign of rs1</td></tr>
+<tr><td>mulw</td><td>32-bit product, sign-extended</td></tr>
+<tr><td>divw, divuw, remw, remuw</td><td>32-bit divide and remainder, sign-extended</td></tr>
+</tbody>
+</table>
+<p>Nothing traps. Division by zero gives all ones for the
+quotient and rs1 for the remainder. The one signed overflow,
+the most negative number divided by -1, gives rs1 and
+remainder 0. For a full 128-bit product, take mulh then mul
+with the same operands.</p>
+<h2 id="f-and-d-floating-point">F and D: floating point</h2>
+<p>F works on 32-bit singles (suffix .s), D on 64-bit doubles
+(.d); every instruction listed with .s has a .d twin. Operands
+are f registers unless named rd or rs.</p>
+<h3>Arithmetic</h3>
+<table>
+<thead>
+<tr><th>Instruction</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>flw, fld rd, off(rs)</td><td>Load a float</td></tr>
+<tr><td>fsw, fsd rs2, off(rs1)</td><td>Store a float</td></tr>
+<tr><td>fadd.s, fsub.s, fmul.s, fdiv.s</td><td>rd = rs1 op rs2</td></tr>
+<tr><td>fsqrt.s rd, rs1</td><td>Square root</td></tr>
+<tr><td>fmin.s, fmax.s</td><td>The smaller, the larger; a NaN loses to a number</td></tr>
+<tr><td>fmadd.s rd, rs1, rs2, rs3</td><td>rd = rs1 * rs2 + rs3, rounded once</td></tr>
+<tr><td>fmsub.s</td><td>rd = rs1 * rs2 - rs3</td></tr>
+<tr><td>fnmsub.s</td><td>rd = -(rs1 * rs2) + rs3</td></tr>
+<tr><td>fnmadd.s</td><td>rd = -(rs1 * rs2) - rs3</td></tr>
+</tbody>
+</table>
+<h3>Sign, compare, classify</h3>
+<table>
+<thead>
+<tr><th>Instruction</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>fsgnj.s rd, rs1, rs2</td><td>rs1 with the sign of rs2</td></tr>
+<tr><td>fsgnjn.s</td><td>With the sign of rs2 inverted</td></tr>
+<tr><td>fsgnjx.s</td><td>With the two signs xored</td></tr>
+<tr><td>feq.s rd, rs1, rs2</td><td>rd = 1 if equal, else 0</td></tr>
+<tr><td>flt.s, fle.s</td><td>rd = 1 if less, less or equal</td></tr>
+<tr><td>fclass.s rd, rs1</td><td>One bit in rd for the class of rs1, below</td></tr>
+</tbody>
+</table>
+<p>fmv.s, fneg.s and fabs.s are fsgnj, fsgnjn and fsgnjx with
+rs1 = rs2. A comparison with a NaN gives 0; flt and fle also
+raise NV for it, feq only for a signalling NaN.</p>
+<table>
+<thead>
+<tr><th>Bit</th><th>Class of fclass</th><th>Bit</th><th>Class of fclass</th></tr>
+</thead>
+<tbody>
+<tr><td>0</td><td>-inf</td><td>5</td><td>Positive subnormal</td></tr>
+<tr><td>1</td><td>Negative normal</td><td>6</td><td>Positive normal</td></tr>
+<tr><td>2</td><td>Negative subnormal</td><td>7</td><td>+inf</td></tr>
+<tr><td>3</td><td>-0</td><td>8</td><td>Signalling NaN</td></tr>
+<tr><td>4</td><td>+0</td><td>9</td><td>Quiet NaN</td></tr>
+</tbody>
+</table>
+<h3>Conversion and moves</h3>
+<table>
+<thead>
+<tr><th>Instruction</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>fcvt.w.s rd, rs1</td><td>Float to signed 32-bit integer</td></tr>
+<tr><td>fcvt.wu.s, fcvt.l.s, fcvt.lu.s</td><td>To unsigned 32, signed 64, unsigned 64</td></tr>
+<tr><td>fcvt.s.w rd, rs1</td><td>Signed 32-bit integer to float</td></tr>
+<tr><td>fcvt.s.wu, fcvt.s.l, fcvt.s.lu</td><td>From unsigned 32, signed 64, unsigned 64</td></tr>
+<tr><td>fcvt.s.d, fcvt.d.s</td><td>Double to single, single to double</td></tr>
+<tr><td>fmv.x.w rd, rs1</td><td>The bits of a single to rd, sign-extended</td></tr>
+<tr><td>fmv.w.x rd, rs1</td><td>The low 32 bits of rs1 to a single</td></tr>
+<tr><td>fmv.x.d, fmv.d.x</td><td>The 64 bits of a double, each way</td></tr>
+</tbody>
+</table>
+<p>A conversion to an integer saturates: out of range or NaN
+gives the largest value of the type (the smallest for a
+negative number), and raises NV. A conversion or an arithmetic
+instruction may take a rounding mode as its last operand:
+fcvt.w.d a0, fa0, rtz truncates.</p>
+<h3>Rounding and flags</h3>
+<table>
+<thead>
+<tr><th>rm</th><th>Mode</th><th>Meaning</th></tr>
+</thead>
+<tbody>
+<tr><td>0</td><td>rne</td><td>To nearest, ties to even</td></tr>
+<tr><td>1</td><td>rtz</td><td>Toward zero</td></tr>
+<tr><td>2</td><td>rdn</td><td>Down</td></tr>
+<tr><td>3</td><td>rup</td><td>Up</td></tr>
+<tr><td>4</td><td>rmm</td><td>To nearest, ties away</td></tr>
+<tr><td>7</td><td>dyn</td><td>Take frm</td></tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr><th>Bit</th><th>Flag</th><th>Meaning</th></tr>
+</thead>
+<tbody>
+<tr><td>4</td><td>NV</td><td>Invalid operation</td></tr>
+<tr><td>3</td><td>DZ</td><td>Divide by zero</td></tr>
+<tr><td>2</td><td>OF</td><td>Overflow</td></tr>
+<tr><td>1</td><td>UF</td><td>Underflow</td></tr>
+<tr><td>0</td><td>NX</td><td>Inexact</td></tr>
+</tbody>
+</table>
+<p>fcsr (CSR 3) holds frm in bits 7-5 and fflags in bits 4-0; frm
+(2) and fflags (1) reach each part alone. The flags accrue:
+they stay set until written 0. Nothing traps on a float
+exception.</p>
+<h2 id="zicsr-control-and-status-registers">Zicsr: control and status registers</h2>
+<table>
+<thead>
+<tr><th>Instruction</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>csrrw rd, csr, rs1</td><td>rd = csr, csr = rs1</td></tr>
+<tr><td>csrrs rd, csr, rs1</td><td>rd = csr, set the bits of rs1</td></tr>
+<tr><td>csrrc rd, csr, rs1</td><td>rd = csr, clear the bits of rs1</td></tr>
+<tr><td>csrrwi, csrrsi, csrrci</td><td>The same with a 5-bit unsigned immediate</td></tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr><th>Pseudo</th><th>Is</th></tr>
+</thead>
+<tbody>
+<tr><td>csrr rd, csr</td><td>csrrs rd, csr, zero</td></tr>
+<tr><td>csrw csr, rs</td><td>csrrw zero, csr, rs</td></tr>
+<tr><td>csrs, csrc csr, rs</td><td>csrrs, csrrc with rd = zero</td></tr>
+<tr><td>csrwi, csrsi, csrci</td><td>The immediate forms, rd = zero</td></tr>
+<tr><td>rdtime rd</td><td>csrr rd, time</td></tr>
+<tr><td>rdinstret rd</td><td>csrr rd, instret</td></tr>
+<tr><td>frcsr, fscsr</td><td>Read, swap fcsr</td></tr>
+<tr><td>frrm, fsrm</td><td>Read, swap frm</td></tr>
+</tbody>
+</table>
+<p>csrrs and csrrc with rs1 = zero only read: they write nothing.
+csrrw with rd = zero does not read. The cycle counter,
+rdcycle, is not on aldan.</p>
+<h2 id="zba-address-generation">Zba: address generation</h2>
+<table>
+<thead>
+<tr><th>Instruction</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>sh1add rd, rs1, rs2</td><td>rd = (rs1 &lt;&lt; 1) + rs2</td></tr>
+<tr><td>sh2add, sh3add</td><td>rd = (rs1 &lt;&lt; 2) + rs2, (rs1 &lt;&lt; 3) + rs2</td></tr>
+<tr><td>add.uw rd, rs1, rs2</td><td>rd = zext32(rs1) + rs2</td></tr>
+<tr><td>sh1add.uw, sh2add.uw, sh3add.uw</td><td>rd = (zext32(rs1) &lt;&lt; n) + rs2</td></tr>
+<tr><td>slli.uw rd, rs1, shamt</td><td>rd = zext32(rs1) &lt;&lt; shamt</td></tr>
+</tbody>
+</table>
+<p>sh3add a0, index, base is the address of base[index] for
+64-bit elements. zext.w rd, rs is add.uw rd, rs, zero.</p>
+<h2 id="zbb-basic-bit-manipulation">Zbb: basic bit manipulation</h2>
+<table>
+<thead>
+<tr><th>Instruction</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>andn, orn rd, rs1, rs2</td><td>rd = rs1 and, or the inverse of rs2</td></tr>
+<tr><td>xnor</td><td>rd = inverse of rs1 xor rs2</td></tr>
+<tr><td>clz, ctz rd, rs1</td><td>Count the leading, trailing zeros; 64 for 0</td></tr>
+<tr><td>clzw, ctzw</td><td>The same on the low 32 bits</td></tr>
+<tr><td>cpop, cpopw</td><td>Count the set bits, of 64 and of 32</td></tr>
+<tr><td>min, max</td><td>The smaller, the larger, signed</td></tr>
+<tr><td>minu, maxu</td><td>The same, unsigned</td></tr>
+<tr><td>sext.b, sext.h</td><td>Sign-extend the low 8, 16 bits</td></tr>
+<tr><td>zext.h</td><td>Zero-extend the low 16 bits</td></tr>
+<tr><td>rol, ror rd, rs1, rs2</td><td>Rotate left, right by rs2 and 63</td></tr>
+<tr><td>rori</td><td>Rotate right by shamt; there is no roli</td></tr>
+<tr><td>rolw, rorw, roriw</td><td>Rotate the low 32 bits, sign-extended</td></tr>
+<tr><td>orc.b rd, rs1</td><td>Each byte of rs1 becomes FF if it is not 0, else 00</td></tr>
+<tr><td>rev8 rd, rs1</td><td>Reverse the order of the bytes</td></tr>
+</tbody>
+</table>
+<p>orc.b finds a zero byte in a word at once, as a string search
+wants; rev8 turns a big-endian value around.</p>
+<h2 id="zbs-single-bit-operations">Zbs: single-bit operations</h2>
+<table>
+<thead>
+<tr><th>Instruction</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>bset rd, rs1, rs2</td><td>rs1 with bit rs2 and 63 set</td></tr>
+<tr><td>bclr</td><td>With that bit cleared</td></tr>
+<tr><td>binv</td><td>With that bit inverted</td></tr>
+<tr><td>bext rd, rs1, rs2</td><td>rd = bit rs2 and 63 of rs1</td></tr>
+<tr><td>bseti, bclri, binvi, bexti</td><td>The same with a 6-bit index</td></tr>
+</tbody>
+</table>
+<h2 id="machine-mode">Machine mode</h2>
+<h3>Trap CSRs</h3>
+<table>
+<thead>
+<tr><th>CSR</th><th>Number</th><th>What it holds</th></tr>
+</thead>
+<tbody>
+<tr><td>mstatus</td><td>300</td><td>MIE bit 3, MPIE 7, MPP 12-11</td></tr>
+<tr><td>mie, mip</td><td>304, 344</td><td>Enabled, pending interrupts: MSIE/MSIP 3, MTIE/MTIP 7, MEIE/MEIP 11</td></tr>
+<tr><td>mtvec</td><td>305</td><td>Trap base; mode in bits 1-0: 0 direct, 1 vectored</td></tr>
+<tr><td>mscratch</td><td>340</td><td>Scratch for the handler</td></tr>
+<tr><td>mepc</td><td>341</td><td>The pc of the trapped instruction</td></tr>
+<tr><td>mcause</td><td>342</td><td>Bit 63 for an interrupt, the code below</td></tr>
+<tr><td>mtval</td><td>343</td><td>The bad address or instruction</td></tr>
+</tbody>
+</table>
+<p>The rest of mstatus (FS, VS, the S and U bits) does nothing on
+aldan, nor does the rest of mie. The full list of what works
+is in the aldan codex.</p>
+<h3>Causes</h3>
+<table>
+<thead>
+<tr><th>Code</th><th>Exception</th><th>Code</th><th>Interrupt</th></tr>
+</thead>
+<tbody>
+<tr><td>0</td><td>Instruction misaligned</td><td>3</td><td>Machine software</td></tr>
+<tr><td>1</td><td>Instruction access</td><td>7</td><td>Machine timer</td></tr>
+<tr><td>2</td><td>Illegal instruction</td><td>B</td><td>Machine external</td></tr>
+<tr><td>3</td><td>Breakpoint</td><td></td><td></td></tr>
+<tr><td>4, 6</td><td>Load, store misaligned</td><td></td><td></td></tr>
+<tr><td>5, 7</td><td>Load, store access</td><td></td><td></td></tr>
+<tr><td>8, 9</td><td>ecall from U, S</td><td></td><td></td></tr>
+<tr><td>B</td><td>ecall from M</td><td></td><td></td></tr>
+<tr><td>C, D, F</td><td>Page faults</td><td></td><td></td></tr>
+</tbody>
+</table>
+<p>Aldan raises only 2, 3 and B, and the three machine
+interrupts.</p>
+<h3>Taking a trap</h3>
+<ul>
+<li>Entry: mepc = pc, mcause and mtval set, MPIE = MIE, MIE = 0, MPP = the old mode, pc = mtvec base. In vectored mode an interrupt goes to base + 4 * code.</li>
+<li>mepc points at the instruction itself: an ecall or ebreak handler adds 4 before mret.</li>
+<li>mret: MIE = MPIE, MPIE = 1, pc = mepc.</li>
+<li>An interrupt is taken when its mip and mie bits are both set and mstatus.MIE is on. External beats software, which beats timer.</li>
+<li>wfi waits until some interrupt is pending and enabled in mie, whatever mstatus.MIE says; with MIE off it just falls through to the next instruction.</li>
+</ul>
+<h3>Timer and software interrupts</h3>
+<p>MTIP is high while mtime &gt;= mtimecmp, two 64-bit registers of
+the clint; writing a later mtimecmp clears it. MSIP is bit 0
+of the clint's msip register. The time CSR reads mtime.</p>
+<h3>Debug triggers (Sdtrig)</h3>
+<p>tselect (7A0) picks a trigger; tdata1 (7A1) sets it up, its
+type in bits 63-60; tdata2 (7A2) holds its address; tinfo
+(7A4) lists the types it can take. Aldan has 8 triggers of
+type 6, mcontrol6 (execute at an exact address), and 3, icount
+(step a count of instructions). A trigger that fires is a
+breakpoint: mcause 3. tcontrol (7A5) holds the bit that keeps
+triggers off inside a handler.</p>
+<h2 id="the-plic">The PLIC</h2>
+<p>The platform-level interrupt controller gathers the lines of
+the devices and offers them to the harts as one external
+interrupt, MEIP.</p>
+<ul>
+<li>Each source 1 to 1023 has a gateway, a pending bit and a priority; 0 is no source. Priority 0 never interrupts, and the higher priority wins, then the lower id.</li>
+<li>A context is a hart in one mode; it has an enable bit per source and a threshold. A source interrupts the context when it is pending and enabled, and its priority is above the threshold.</li>
+<li>Claim: a read of the context's claim register returns the best source and clears its pending bit, or returns 0 when there is none.</li>
+<li>Complete: writing that id back to the same register. The gateway sends no new request for the source until then; a level-triggered line that is still high is pending again at once.</li>
+<li>So a handler claims, serves the device until its line drops, then completes, and claims again until 0.</li>
+</ul>
+<table>
+<thead>
+<tr><th>Offset</th><th>Register</th></tr>
+</thead>
+<tbody>
+<tr><td>0 + 4 * source</td><td>Priority</td></tr>
+<tr><td>1000</td><td>Pending bits, 32 sources a word</td></tr>
+<tr><td>2000 + 80 * context</td><td>Enable bits of the context</td></tr>
+<tr><td>200000 + 1000 * context</td><td>Threshold of the context</td></tr>
+<tr><td>200004 + 1000 * context</td><td>Claim on read, complete on write</td></tr>
+</tbody>
+</table>
+<p>All registers are 32 bits. Aldan has one context, 0 for hart 0
+in machine mode, sources 1 to 5F and priorities 0 to 7.</p>
+<h2 id="v-vectors">V: vectors</h2>
+<h3>The model</h3>
+<ul>
+<li>Each of the 32 registers holds VLEN bits: 256 on aldan, so vlenb = 32 bytes.</li>
+<li>vtype sets the element width SEW and the group LMUL: a group of LMUL registers acts as one longer register, and an operand names its first, a multiple of LMUL.</li>
+<li>vl is the number of elements an instruction works on, at most VLMAX = LMUL * VLEN / SEW. The ones past vl are the tail.</li>
+<li>A masked instruction, written with a last operand v0.t, works only on the elements whose bit is set in v0: bit i of v0 for element i.</li>
+<li>vta and vma pick what tail and masked-off elements become: undisturbed, or agnostic (anything, perhaps all ones). Aldan always leaves them undisturbed.</li>
+<li>vstart is the element to resume from after a trap; it is 0 otherwise.</li>
+</ul>
+<table>
+<thead>
+<tr><th>SEW</th><th>m1</th><th>m2</th><th>m4</th><th>m8</th><th>Elements of VLEN 256</th></tr>
+</thead>
+<tbody>
+<tr><td>e8</td><td>32</td><td>64</td><td>128</td><td>256</td><td></td></tr>
+<tr><td>e16</td><td>16</td><td>32</td><td>64</td><td>128</td><td></td></tr>
+<tr><td>e32</td><td>8</td><td>16</td><td>32</td><td>64</td><td></td></tr>
+<tr><td>e64</td><td>4</td><td>8</td><td>16</td><td>32</td><td></td></tr>
+</tbody>
+</table>
+<h3>Configuration</h3>
+<table>
+<thead>
+<tr><th>Instruction</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>vsetvli rd, rs1, e32, m4, ta, ma</td><td>vtype = e32, m4, ta, ma; vl = min(rs1, VLMAX); rd = vl</td></tr>
+<tr><td>vsetivli rd, uimm, vtype</td><td>The same with a 5-bit count</td></tr>
+<tr><td>vsetvl rd, rs1, rs2</td><td>The same with vtype in rs2</td></tr>
+</tbody>
+</table>
+<p>With rs1 = zero and rd not zero, vl = VLMAX. With both zero,
+vl stays and only vtype changes.</p>
+<table>
+<thead>
+<tr><th>vtype bits</th><th>Field</th><th>Values</th></tr>
+</thead>
+<tbody>
+<tr><td>2-0</td><td>vlmul</td><td>0 m1, 1 m2, 2 m4, 3 m8; 5 mf8, 6 mf4, 7 mf2</td></tr>
+<tr><td>5-3</td><td>vsew</td><td>0 e8, 1 e16, 2 e32, 3 e64</td></tr>
+<tr><td>6</td><td>vta</td><td>Tail agnostic</td></tr>
+<tr><td>7</td><td>vma</td><td>Mask agnostic</td></tr>
+<tr><td>63</td><td>vill</td><td>The vtype asked for is not supported</td></tr>
+</tbody>
+</table>
+<p>A vtype aldan does not support (fractional LMUL, or SEW above
+64) sets vill and vl = 0, and then every vector instruction
+but vset is illegal.</p>
+<table>
+<thead>
+<tr><th>CSR</th><th>Number</th><th>What it holds</th></tr>
+</thead>
+<tbody>
+<tr><td>vstart</td><td>008</td><td>The first element to work on</td></tr>
+<tr><td>vxsat</td><td>009</td><td>Set by a saturating instruction that clamped</td></tr>
+<tr><td>vxrm</td><td>00A</td><td>Fixed-point rounding: 0 rnu (to nearest, up), 1 rne, 2 rdn (truncate), 3 rod (to odd)</td></tr>
+<tr><td>vcsr</td><td>00F</td><td>vxrm in bits 2-1, vxsat in bit 0</td></tr>
+<tr><td>vl</td><td>C20</td><td>The element count, read only</td></tr>
+<tr><td>vtype</td><td>C21</td><td>The type, read only</td></tr>
+<tr><td>vlenb</td><td>C22</td><td>VLEN in bytes, read only</td></tr>
+</tbody>
+</table>
+<h3>A loop</h3>
+<p>The count left goes into vsetvli at each pass, and the pass
+takes as many elements as fit; there is no remainder loop.
+This adds 1 to a0 words from a1 into a2:</p>
+<pre>
+loop:
+    vsetvli t0, a0, e32, m8, ta, ma
+    vle32.v v8, (a1)
+    vadd.vi v8, v8, 1
+    vse32.v v8, (a2)
+    sub     a0, a0, t0
+    sh2add  a1, t0, a1
+    sh2add  a2, t0, a2
+    bnez    a0, loop
+</pre>
+<h3>Operands</h3>
+<p>An instruction is named for its operands: .vv two vectors, .vx
+a vector and an integer register, .vi a vector and a 5-bit
+immediate, .vf a vector and a float register, .vs a vector and
+element 0 of another, .mm two masks, .vvm and the rest a mask
+in v0 as well. The second source comes first: vsub.vv vd, vs2,
+vs1 is vd = vs2 - vs1. The immediate is signed, but unsigned
+for shifts and slides.</p>
+<h3>Loads and stores</h3>
+<table>
+<thead>
+<tr><th>Instruction</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>vle8.v, vle16.v, vle32.v, vle64.v vd, (rs1)</td><td>Unit stride: vl elements from rs1 on</td></tr>
+<tr><td>vse8.v ... vse64.v vs3, (rs1)</td><td>Unit-stride store</td></tr>
+<tr><td>vlse8.v ... vlse64.v vd, (rs1), rs2</td><td>Strided: element i from rs1 + i * rs2</td></tr>
+<tr><td>vsse8.v ... vsse64.v</td><td>Strided store</td></tr>
+<tr><td>vluxei8.v ... vluxei64.v vd, (rs1), vs2</td><td>Indexed: element i from rs1 + vs2[i]; vloxei in order</td></tr>
+<tr><td>vsuxei8.v ..., vsoxei8.v ...</td><td>Indexed stores</td></tr>
+<tr><td>vl1r.v vd, (rs1)</td><td>One whole register, whatever vl</td></tr>
+<tr><td>vs1r.v vs3, (rs1)</td><td>Store one whole register</td></tr>
+</tbody>
+</table>
+<p>On aldan the element width of a load or store must equal SEW,
+and an index is SEW bits too. There are no mask loads (vlm.v),
+no fault-only-first, no segments and no vl2r.v to vl8r.v.</p>
+<h3>Integer arithmetic</h3>
+<table>
+<thead>
+<tr><th>Instruction</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>vadd.vv, .vx, .vi</td><td>vd = vs2 + vs1</td></tr>
+<tr><td>vsub.vv, .vx</td><td>vd = vs2 - vs1</td></tr>
+<tr><td>vrsub.vx, .vi</td><td>vd = x - vs2; vneg.v is vrsub.vx vd, vs, zero</td></tr>
+<tr><td>vand, vor, vxor .vv, .vx, .vi</td><td>Bitwise; vnot.v is vxor.vi vd, vs, -1</td></tr>
+<tr><td>vsll, vsrl, vsra .vv, .vx, .vi</td><td>Shifts by the low log2(SEW) bits</td></tr>
+<tr><td>vmin, vminu, vmax, vmaxu .vv, .vx</td><td>Smaller, larger, signed and unsigned</td></tr>
+<tr><td>vmul .vv, .vx</td><td>Low half of the product</td></tr>
+<tr><td>vmulh, vmulhu, vmulhsu .vv, .vx</td><td>High half: signed, unsigned, signed * unsigned</td></tr>
+<tr><td>vmacc.vv, .vx</td><td>vd = vd + vs1 * vs2</td></tr>
+<tr><td>vnmsac.vv, .vx</td><td>vd = vd - vs1 * vs2</td></tr>
+<tr><td>vwmul, vwmulu, vwmulsu .vv, .vx</td><td>Widening: a 2 * SEW product into a group of 2 * LMUL</td></tr>
+<tr><td>vwadd, vwaddu .vv, .vx</td><td>Widening sum; vwadd.vx vd, vs, zero sign-extends</td></tr>
+<tr><td>vmerge.vvm, .vxm, .vim</td><td>vd = vs1, x or imm where v0 is set, else vs2</td></tr>
+<tr><td>vmv.v.v, .v.x, .v.i</td><td>Copy or splat into vd</td></tr>
+</tbody>
+</table>
+<h3>Compare</h3>
+<p>Each sets bit i of the mask vd to the result for element i.</p>
+<table>
+<thead>
+<tr><th>Instruction</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>vmseq, vmsne .vv, .vx, .vi</td><td>Equal, not equal</td></tr>
+<tr><td>vmslt, vmsltu .vv, .vx</td><td>Less, signed and unsigned</td></tr>
+<tr><td>vmsle, vmsleu .vv, .vx, .vi</td><td>Less or equal</td></tr>
+<tr><td>vmsgt, vmsgtu .vx, .vi</td><td>Greater; for .vv swap the operands of vmslt</td></tr>
+</tbody>
+</table>
+<h3>Fixed point</h3>
+<table>
+<thead>
+<tr><th>Instruction</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>vsadd, vsaddu .vv, .vx, .vi</td><td>Add, clamped to the range</td></tr>
+<tr><td>vssub, vssubu .vv, .vx</td><td>Subtract, clamped</td></tr>
+<tr><td>vaadd.vv, .vx</td><td>(vs2 + vs1) / 2, rounded by vxrm, without overflow</td></tr>
+<tr><td>vsmul.vv, .vx</td><td>vs2 * vs1 &gt;&gt; (SEW - 1), rounded and clamped: a Q15 or Q31 product</td></tr>
+<tr><td>vssra.vv, .vx, .vi</td><td>Arithmetic shift right, rounded by vxrm</td></tr>
+</tbody>
+</table>
+<p>A clamp sets vxsat.</p>
+<h3>Slides and moves</h3>
+<table>
+<thead>
+<tr><th>Instruction</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>vslideup.vx, .vi vd, vs2, n</td><td>vd[i + n] = vs2[i]; vd[0] to vd[n - 1] keep their value</td></tr>
+<tr><td>vslidedown.vx, .vi</td><td>vd[i] = vs2[i + n], 0 past VLMAX</td></tr>
+<tr><td>vslide1up.vx vd, vs2, rs1</td><td>vd[0] = rs1, vd[i + 1] = vs2[i]</td></tr>
+<tr><td>vslide1down.vx</td><td>vd[i] = vs2[i + 1], vd[vl - 1] = rs1</td></tr>
+<tr><td>vmv.x.s rd, vs2</td><td>rd = element 0, sign-extended</td></tr>
+<tr><td>vmv.s.x vd, rs1</td><td>Element 0 = rs1</td></tr>
+</tbody>
+</table>
+<h3>Reductions and masks</h3>
+<table>
+<thead>
+<tr><th>Instruction</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>vredsum.vs vd, vs2, vs1</td><td>vd[0] = vs1[0] + the sum of vs2</td></tr>
+<tr><td>vredmax, vredmaxu, vredmin, vredminu</td><td>The same with max or min, from vs1[0]</td></tr>
+<tr><td>vmand, vmnand, vmandn, vmor, vmnor, vmorn, vmxor, vmxnor .mm</td><td>Mask logic, bit by bit: vs2 op vs1. vmnand, vmnor, vmxnor invert the result; vmandn, vmorn invert vs1</td></tr>
+<tr><td>vcpop.m rd, vs2</td><td>The count of set bits below vl</td></tr>
+<tr><td>vfirst.m rd, vs2</td><td>The index of the first set bit, or -1</td></tr>
+</tbody>
+</table>
+<p>vmmv.m is vmand.mm vd, vs, vs; vmnot.m is vmnand.mm vd, vs,
+vs; vmclr.m is vmxor.mm vd, vd, vd; vmset.m is vmxnor.mm vd,
+vd, vd.</p>
+<h3>Float</h3>
+<p>SEW 32 or 64 only, rounded by frm.</p>
+<table>
+<thead>
+<tr><th>Instruction</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>vfadd, vfsub, vfmul, vfdiv .vv, .vf</td><td>vd = vs2 op vs1, or op rs1</td></tr>
+<tr><td>vfmin, vfmax .vv, .vf</td><td>Smaller, larger</td></tr>
+<tr><td>vfsgnj, vfsgnjn .vv, .vf</td><td>Sign injection; vfneg.v is vfsgnjn.vv vd, vs, vs</td></tr>
+<tr><td>vfmacc.vv, .vf</td><td>vd = vd + vs1 * vs2</td></tr>
+<tr><td>vfsqrt.v vd, vs2</td><td>Square root</td></tr>
+<tr><td>vfcvt.x.f.v, vfcvt.xu.f.v</td><td>Float to integer, by frm</td></tr>
+<tr><td>vfcvt.rtz.x.f.v, vfcvt.rtz.xu.f.v</td><td>Float to integer, truncated</td></tr>
+<tr><td>vfcvt.f.x.v, vfcvt.f.xu.v</td><td>Integer to float</td></tr>
+<tr><td>vfmv.v.f vd, rs1</td><td>Splat a float</td></tr>
+<tr><td>vfmv.f.s rd, vs2</td><td>rd = element 0</td></tr>
+<tr><td>vfmv.s.f vd, rs1</td><td>Element 0 = rs1</td></tr>
+<tr><td>vfredusum.vs</td><td>vd[0] = vs1[0] + the sum of vs2</td></tr>
+</tbody>
+</table>
+<h3>Missing on aldan</h3>
+<p>These decode as illegal instructions: vdiv, vdivu, vrem and
+vremu; vrgather, vcompress, vid.v and viota.m; vzext and
+vsext; every narrowing instruction (vnsrl, vnclip, vfncvt) and
+the widening ones but the vwmul and vwadd families; vmv1r.v to
+vmv8r.v; vredand, vredor, vredxor, vmsbf, vmsif and vmsof;
+vfrsub, vfrdiv, vfsgnjx, the float compares, vfclass,
+vfredosum, vfredmax, vfredmin, vfmsac and the other fused
+forms but vfmacc; vaaddu, vasub and vasubu; vmadd, vnmsub and
+the carry instructions vadc, vsbc, vmadc and vmsbc. Instead of
+vmv1r.v use vl1r.v and vs1r.v through memory, or vmv.v.v under
+an LMUL that covers the group.</p>
+</body>
+</html>

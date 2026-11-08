@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Aldos manual</title>
+<meta name="author" content="ortfero">
+<meta name="year" content="2026">
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<h1>Aldos manual</h1>
+<p class="subtitle">The machine on one page</p>
+<address>ortfero</address>
+<p>What the machine is made of, how it comes up, how loom lays
+out its windows, and the commands that operate it, which help
+prints at the prompt too. The keys are in the keys codex, the
+hardware in the aldan codex and the instruction set in the
+riscv codex.</p>
+<h2 id="architecture">Architecture</h2>
+<p>The machine is built in layers, lowest first.</p>
+<table>
+<thead>
+<tr><th>Layer</th><th>What it is</th></tr>
+</thead>
+<tbody>
+<tr><td>Machine</td><td>A 64-bit RISC-V computer with 16 MB of memory: a screen, a keyboard, a disk, sound, a network and a host directory</td></tr>
+<tr><td>Firmware</td><td>The boot ROM. It owns every driver and publishes one call table</td></tr>
+<tr><td>Almac</td><td>The resident binary, and the only one: the language, its compiler and the emergency prompt</td></tr>
+<tr><td>Aldos</td><td>The task, memory, volume, file and service managers, written in almac</td></tr>
+<tr><td>Core</td><td>The library every program draws on</td></tr>
+<tr><td>Programs</td><td>The applications, loom among them</td></tr>
+</tbody>
+</table>
+<ul>
+<li>There is no kernel image and no system call. A program reaches aldos by importing it, the way it reaches core.</li>
+<li>A program is a module: a .alm text file, compiled the first time it is imported and kept until reset.</li>
+<li>Everything runs in one address space. Nothing isolates one module from another.</li>
+<li>Fibers are cooperative: one runs until it yields, waits on a device or returns. A service is a fiber that goes on after the call that started it.</li>
+</ul>
+<h2 id="drives">Drives</h2>
+<table>
+<thead>
+<tr><th>Path</th><th>What it is</th></tr>
+</thead>
+<tbody>
+<tr><td>/a</td><td>The boot disk, read-only</td></tr>
+<tr><td>/b</td><td>The directory aldan in the host's home directory</td></tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr><th>Path</th><th>What it holds</th></tr>
+</thead>
+<tbody>
+<tr><td>/a/almac.bin</td><td>The resident binary</td></tr>
+<tr><td>/a/rc.alm</td><td>The start-up script</td></tr>
+<tr><td>/a/rc</td><td>The module the commands come from</td></tr>
+<tr><td>/a/core</td><td>The core library</td></tr>
+<tr><td>/a/aldos</td><td>The operating-system modules</td></tr>
+<tr><td>/a/modules</td><td>The applications</td></tr>
+<tr><td>/a/codex</td><td>The documents, this one among them</td></tr>
+<tr><td>/a/samples</td><td>Pictures, tunes and recordings</td></tr>
+</tbody>
+</table>
+<p>Drive /a is the system as it was built, one pack archive on
+the disk. It is read-only: an update replaces it whole, and a
+write to it is refused. Keep your own files on /b.</p>
+<p>A path that does not begin with a slash is relative to the
+working directory. A dot is the working directory, two dots
+its parent.</p>
+<h2 id="boot">Boot</h2>
+<ul>
+<li>The firmware reads the device tree, publishes its call table, and brings up the screen, the disk, the host directory, the network, the keyboard and the sound.</li>
+<li>It loads /a/almac.bin from the boot disk and jumps to it. A failure here is reported by the firmware.</li>
+<li>Almac reads /a/rc.alm. Its imports bring up the core library and the aldos modules beneath it, and its definitions make the commands.</li>
+<li>The last line of rc.alm starts loom, which takes the screen and does not return.</li>
+</ul>
+<p>A fault in rc.alm is reported as a module, a line and a
+reason, and leaves the machine at the emergency prompt; loom
+typed there goes back to the environment.</p>
+<ul>
+<li>reset gives every module up, reads rc.alm again and starts loom again, without the firmware. It is how a change to rc.alm or to a config takes.</li>
+<li>reboot goes through the firmware again, as a power cycle would.</li>
+<li>halt powers the machine off. Nothing is saved.</li>
+</ul>
+<h2 id="loom">Loom</h2>
+<p>Loom is the environment, and the only prompt a working machine
+shows.</p>
+<h3>The windows</h3>
+<p>Every app is a window of its own, with a fiber of its own, so
+a slow one never holds up another. The display shows one
+window or two: two halves side by side when it is wide, one
+when it is narrow (a phone held upright).</p>
+<ul>
+<li>The repl is the first window, and is always there.</li>
+<li>A new window opens with the keys, and the window that had them stands beside it.</li>
+<li>A window lasts as long as it holds something. Putting down what it holds puts the window down too, and the keys go back to the window it was opened from.</li>
+<li>The title of the window with the keys is inverted.</li>
+<li>Only the repl takes commands. Every key in another window is that window's own.</li>
+</ul>
+<h3>The apps</h3>
+<table>
+<thead>
+<tr><th>Window</th><th>What it holds, and the line that opens it</th></tr>
+</thead>
+<tbody>
+<tr><td>Repl</td><td>What the prompt has said, and the input line; always there</td></tr>
+<tr><td>Files</td><td>A listing of a directory, up to four: files</td></tr>
+<tr><td>Editor</td><td>A document: edit 'path</td></tr>
+<tr><td>Viewer</td><td>A text file, read only, up to four: view 'path</td></tr>
+<tr><td>Reader</td><td>A markoff document, up to four: read 'path</td></tr>
+<tr><td>Picture</td><td>One picture, half or whole: look 'path</td></tr>
+<tr><td>Drawing</td><td>One plot drawing, half or whole: plot 'path</td></tr>
+<tr><td>Music</td><td>A tune or a recording: play 'path</td></tr>
+<tr><td>Journal</td><td>What the services write: journal</td></tr>
+<tr><td>Debugger</td><td>A session of the debugger: launch &quot;line&quot;</td></tr>
+<tr><td>Keys</td><td>The keys codex, at the window's section: f1</td></tr>
+</tbody>
+</table>
+<p>Of the picture, the drawing, the music, the journal and the
+debugger there is one window each: opening another thing in
+it brings that window up holding it. A codex opens in a reader with help
+'name: keys, aldos, aldan, almac, snippets or markoff. The
+viewer shows any text file as written, a markoff document
+among them; the reader takes a markoff document and nothing
+else, and renders it: paragraphs flow to the reading column,
+tables are drawn with box pieces.</p>
+<h2 id="commands">Commands</h2>
+<p>Whatever is typed at the prompt is almac. A command is a
+function, called by its name.</p>
+<ul>
+<li>A call without arguments needs no parentheses.</li>
+<li>A string is written with a leading quote, 'name, or in double quotes when it holds a space.</li>
+<li>Arguments are separated by commas.</li>
+<li>No command takes an option.</li>
+</ul>
+<pre>
+&gt; cd '/a/codex
+&gt; cp 'aldos_keys.moff, '/b
+&gt; edit &quot;/b/my notes&quot;
+</pre>
+<h3>Files</h3>
+<table>
+<thead>
+<tr><th>Command</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>ls</td><td>List the working directory</td></tr>
+<tr><td>lsd 'path</td><td>List a directory</td></tr>
+<tr><td>cd 'path</td><td>Change the working directory</td></tr>
+<tr><td>cd '.</td><td>Say the working directory</td></tr>
+<tr><td>cat 'path</td><td>Print a short text file</td></tr>
+<tr><td>touch 'path</td><td>Create an empty file</td></tr>
+<tr><td>mkdir 'path</td><td>Create a directory</td></tr>
+<tr><td>rmdir 'path</td><td>Remove an empty directory</td></tr>
+<tr><td>rm 'path</td><td>Remove a file or a tree, for good</td></tr>
+<tr><td>cp 'a, 'b</td><td>Copy a file or a tree</td></tr>
+<tr><td>mv 'a, 'b</td><td>Move or rename a file or a tree</td></tr>
+</tbody>
+</table>
+<h3>Documents</h3>
+<table>
+<thead>
+<tr><th>Command</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>edit 'path</td><td>Open a document in an editor</td></tr>
+<tr><td>view 'path</td><td>Open a text file in a viewer</td></tr>
+<tr><td>read 'path</td><td>Open a markoff document in a reader</td></tr>
+<tr><td>save</td><td>Write the last editor's document</td></tr>
+<tr><td>compile</td><td>Compile the last editor's document</td></tr>
+<tr><td>import 'path</td><td>Compile a module and bind its names</td></tr>
+</tbody>
+</table>
+<h3>The machine</h3>
+<table>
+<thead>
+<tr><th>Command</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>help</td><td>List these commands</td></tr>
+<tr><td>help 'keys</td><td>The keys of every pane</td></tr>
+<tr><td>help 'aldos</td><td>The system and its commands</td></tr>
+<tr><td>help 'aldan</td><td>The hardware and its registers</td></tr>
+<tr><td>help 'riscv</td><td>The instruction set</td></tr>
+<tr><td>help 'almac</td><td>The almac language report</td></tr>
+<tr><td>help 'snippets</td><td>Almac by example</td></tr>
+<tr><td>memory</td><td>What the memory pool is doing</td></tr>
+<tr><td>services</td><td>List the running services</td></tr>
+<tr><td>stop 'name</td><td>Stop a service</td></tr>
+<tr><td>reset</td><td>Rebuild the image from rc.alm</td></tr>
+<tr><td>reboot</td><td>Start the machine again</td></tr>
+<tr><td>halt</td><td>Power the machine off</td></tr>
+</tbody>
+</table>
+</body>
+</html>

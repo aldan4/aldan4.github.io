@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>aldan 4</title>
-<meta name="author" content="andrei ilin">
+<meta name="author" content="ortfero">
 <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
@@ -26,23 +26,52 @@
 <h2>specifications</h2>
 <ul>
 <li>rv64 cpu</li>
-<li>4 mb ram</li>
-<li>256 mb hdd</li>
-<li>720x480x4(256) display</li>
+<li>16 mb ram</li>
+<li>12 mb hdd</li>
+<li>780x520x4(256) display</li>
 </ul>
 
 <h2>downloads</h2>
 <ul>
-<li><a href="https://github.com/aldan4/aldan4.github.io/releases/latest/download/aldan-linux.zip">linux</a></li>
+<li><a href="play/">play in the browser</a></li>
+<li><a href="https://github.com/aldan4/aldan4.github.io/releases/latest/download/aldan-linux.tar.xz">linux</a></li>
 <li><a href="https://github.com/aldan4/aldan4.github.io/releases/latest/download/aldan-macos.zip">macos</a></li>
 <li><a href="https://github.com/aldan4/aldan4.github.io/releases/latest/download/aldan-windows.zip">windows</a></li>
+<li><a href="https://github.com/aldan4/aldan4.github.io/releases/latest/download/aldan-android.apk">android</a></li>
+<li><a href="https://github.com/aldan4/aldan4.github.io/releases/latest/download/aldan-qemu.zip">qemu image</a></li>
 </ul>
+
+<h2>qemu</h2>
+<p>aldan also runs on a stock qemu risc-v virt machine.
+<a href="https://github.com/aldan4/aldan4.github.io/releases/latest/download/aldan-qemu.zip">download the image</a>
+and unpack it: it holds <code>bootmgr.bin</code> (firmware) and <code>disk.img</code>.
+then:</p>
+<ol>
+<li>install qemu with risc-v support (<code>qemu-system-riscv64</code>, version 8 or newer)</li>
+<li>open a terminal in the unpacked folder</li>
+<li>start the machine with the firmware as bios, the disk on an nvme device, and a virtio display and keyboard:
+<pre>qemu-system-riscv64 -M virt -m 16M -smp 1 \
+  -display sdl -serial stdio -monitor none \
+  -cpu rv64,v=true,vlen=256,zba=true,zbb=true,zbs=true,num-triggers=8 \
+  -bios bootmgr.bin \
+  -drive file=disk.img,if=none,id=d0,format=raw,snapshot=on \
+  -device nvme,drive=d0,serial=aldan \
+  -netdev user,id=n0 -device virtio-net-device,netdev=n0 \
+  -device virtio-keyboard-device \
+  -device virtio-gpu-device,xres=1560,yres=1040 \
+  -global virtio-mmio.force-legacy=false</pre></li>
+<li>on macos use <code>-display cocoa,zoom-to-fit=on</code> instead of <code>-display sdl</code></li>
+<li>close the window to quit; <code>snapshot=on</code> keeps <code>disk.img</code> untouched, so changes are not saved</li>
+</ol>
+<p>for convenience the archive also has <code>run.sh</code>, which runs the same command.</p>
 
 <h2>codex</h2>
 <ul>
-<li><a href="docs/aldos_operators_manual.html">aldos operator's manual</a></li>
+<li><a href="docs/aldos_manual.html">aldos manual</a></li>
+<li><a href="docs/aldan_manual.html">aldan manual</a></li>
+<li><a href="docs/riscv_manual.html">risc-v manual</a></li>
 <li><a href="docs/almac_report.html">almac language report</a></li>
-<li><a href="docs/learn_almac.html">learn almac</a></li>
+<li><a href="docs/almac_snippets.html">almac snippets</a></li>
 </ul>
 
 <h2>screenshots</h2>

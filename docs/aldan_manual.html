@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Aldan manual</title>
+<meta name="author" content="ortfero">
+<meta name="year" content="2026">
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<h1>Aldan manual</h1>
+<p class="subtitle">The hardware cheatsheet</p>
+<address>ortfero</address>
+<p>The machine as a program sees it: the processor, the memory
+map, and the registers of every device. It is enough to bring
+the machine up and to drive each device from nothing.
+Addresses, offsets, ids, codes and register values are
+hexadecimal; counts, sizes and dimensions are decimal, but for
+the sizes in the memory map.</p>
+<h2 id="the-machine">The machine</h2>
+<ul>
+<li>One hart, RV64 with M, F, D, V, Zicsr, Zifencei, Zba, Zbb, Zbs and Sdtrig. Every instruction is 32 bits: there is no C extension. The instructions are listed in the riscv codex.</li>
+<li>No A extension: there is no LR/SC and no AMO. With one hart, masking interrupts is the only lock.</li>
+<li>Machine mode only. There is no S or U mode, no paging and no PMP: one address space, all of it reachable.</li>
+<li>16 MB of RAM at 80000000, the first 128 KB of it the boot ROM. Little-endian.</li>
+<li>The devices: a timer (clint), an interrupt controller (plic), a serial line, a real-time clock, a power switch, five virtio transports (host directory, network, keyboard, sound, display) and an NVMe disk on a PCI bus.</li>
+<li>Every device does its work inside the store that asks for it: a virtio notify or an NVMe doorbell has finished when the store returns. Only what comes from outside — a key, a frame, the sound being played — arrives later.</li>
+</ul>
+<h2 id="the-processor">The processor</h2>
+<h3>Instructions</h3>
+<ul>
+<li>I, M, F, D in full. F and D are always on: mstatus.FS is not modelled.</li>
+<li>Zba, Zbb and Zbs in full.</li>
+<li>fence and fence.i do nothing and are not needed: code written by a store or by DMA runs as written.</li>
+<li>V is a subset of RVV 1.0, with VLEN 256 (vlenb 32) and ELEN 64.</li>
+</ul>
+<table>
+<thead>
+<tr><th>V</th><th>What there is</th></tr>
+</thead>
+<tbody>
+<tr><td>vtype</td><td>SEW 8, 16, 32, 64; LMUL 1, 2, 4, 8. Fractional LMUL sets vill. vta and vma are ignored: tails and masked elements are left undisturbed</td></tr>
+<tr><td>Config</td><td>vsetvli, vsetivli, vsetvl</td></tr>
+<tr><td>Memory</td><td>Unit-stride, strided and indexed, EEW equal to SEW; vl1r.v and vs1r.v only. No vlm, no fault-only-first, no segments</td></tr>
+<tr><td>Integer</td><td>vadd, vsub, vrsub, vand, vor, vxor, vsll, vsrl, vsra, vmin(u), vmax(u), vmerge, vmv.v, vmseq..vmsgt, vsadd(u), vssub(u), vsmul, vssra, vaadd, vmul, vmulh(u, su), vmacc, vnmsac, vwmul(u, su), vwadd(u), vslideup, vslidedown, vslide1up, vslide1down</td></tr>
+<tr><td>Reduce, mask</td><td>vredsum, vredmax(u), vredmin(u), vcpop.m, vfirst.m, the eight mask logicals, vmv.x.s, vmv.s.x</td></tr>
+<tr><td>Float</td><td>SEW 32 and 64: vfadd, vfsub, vfmul, vfdiv, vfmin, vfmax, vfsgnj(n), vfmacc, vfsqrt, vfcvt, vfmv, vfredusum</td></tr>
+<tr><td>Missing</td><td>Illegal instruction: vdiv(u), vrem(u), vrgather, vcompress, vid, viota, vzext, vsext, vmv&lt;n&gt;r.v; narrowing, and widening but vwmul and vwadd; vmadd, vnmsub, vaaddu, vasub(u), vadc, vsbc, vmadc, vmsbc; vredand, vredor, vredxor, vmsbf, vmsif, vmsof; vfrsub, vfrdiv, vfsgnjx, vmfeq and the other float compares, vfclass, vfmsac and the other fused forms but vfmacc, vfredosum, vfredmax, vfredmin</td></tr>
+</tbody>
+</table>
+<h3>Registers</h3>
+<p>The CSRs that work:</p>
+<table>
+<thead>
+<tr><th>CSR</th><th>Number</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>mstatus</td><td>300</td><td>MIE (bit 3), MPIE (7), MPP (12:11); nothing else acts</td></tr>
+<tr><td>mie</td><td>304</td><td>MSIE (3), MTIE (7), MEIE (11)</td></tr>
+<tr><td>mip</td><td>344</td><td>Read only, live</td></tr>
+<tr><td>mtvec</td><td>305</td><td>Mode 0 direct, 1 vectored (interrupts at base + 4 * cause)</td></tr>
+<tr><td>mscratch</td><td>340</td><td>Scratch</td></tr>
+<tr><td>mepc</td><td>341</td><td>Taken raw by mret</td></tr>
+<tr><td>mcause</td><td>342</td><td>The cause</td></tr>
+<tr><td>mtval</td><td>343</td><td>The faulting word or pc</td></tr>
+<tr><td>mhartid</td><td>F14</td><td>0</td></tr>
+<tr><td>marchid</td><td>F12</td><td>616C64616E34, &quot;aldan4&quot;</td></tr>
+<tr><td>time</td><td>C01</td><td>The clint's mtime, 10 MHz</td></tr>
+<tr><td>instret</td><td>C02</td><td>Instructions retired</td></tr>
+<tr><td>fflags, frm, fcsr</td><td>1, 2, 3</td><td>The float state</td></tr>
+<tr><td>vstart, vxsat, vxrm, vcsr</td><td>8, 9, A, F</td><td>The vector state</td></tr>
+<tr><td>vl, vtype, vlenb</td><td>C20, C21, C22</td><td>Read only</td></tr>
+<tr><td>tselect, tdata1-3, tinfo, tcontrol</td><td>7A0 to 7A5</td><td>Sdtrig: 8 triggers, mcontrol6 (execute, exact address) and icount</td></tr>
+</tbody>
+</table>
+<p>Any other CSR number is accepted without a trap and lands in a
+128-entry array indexed by its low seven bits, so unrelated
+CSRs alias each other: cycle (C00) reads mstatus, and a write
+to satp (180), sstatus (100) or mcycle (B00) overwrites
+mstatus. Keep to the table.</p>
+<h3>Traps</h3>
+<ul>
+<li>Entry: mepc = pc, mcause, mtval, MPIE = MIE, MIE = 0, pc = mtvec. mret: MIE = MPIE, pc = mepc, then any pending enabled interrupt is taken at once.</li>
+<li>The causes raised are 2 (illegal instruction, mtval the word), 3 (ebreak or a trigger, mtval the pc) and B (ecall). Misaligned and unmapped accesses never trap.</li>
+<li>The interrupts are 8000000000000003 (software), ...07 (timer) and ...0B (external), taken in the order external, software, timer.</li>
+<li>Interrupts are sampled only at certain points: every 8192 instructions, at wfi, at mret, and on a write to mstatus or mie. Expect up to 8192 instructions of latency.</li>
+<li>wfi stalls the hart until mip and mie have a bit in common, whether or not mstatus.MIE is set, and the host idles while it waits.</li>
+</ul>
+<h3>Reset</h3>
+<ul>
+<li>pc = 80000000, the start of the ROM. a0 = 0, the hart id; a1 = 80800000, the device tree. Every other register and CSR is 0: interrupts are off and mtvec is 0.</li>
+<li>RAM is not cleared, and a reboot does not reset the devices: the plic, the clint, the serial line and the clock keep their state. Set each up from scratch.</li>
+</ul>
+<h2 id="memory">Memory</h2>
+<table>
+<thead>
+<tr><th>Address</th><th>Size</th><th>What is there</th></tr>
+</thead>
+<tbody>
+<tr><td>00100000</td><td>1000</td><td>Power switch (syscon)</td></tr>
+<tr><td>00101000</td><td>1000</td><td>Real-time clock</td></tr>
+<tr><td>02000000</td><td>10000</td><td>Timer (clint)</td></tr>
+<tr><td>0C000000</td><td>400000</td><td>Interrupt controller (plic)</td></tr>
+<tr><td>10000000</td><td>100</td><td>Serial line (16550)</td></tr>
+<tr><td>10001000</td><td>5 * 1000</td><td>Virtio transports 0 to 4</td></tr>
+<tr><td>30000000</td><td>100000</td><td>PCI configuration (ECAM)</td></tr>
+<tr><td>40000000</td><td>40000000</td><td>PCI memory window</td></tr>
+<tr><td>80000000</td><td>10000</td><td>Boot ROM</td></tr>
+<tr><td>80010000</td><td>FF0000</td><td>RAM</td></tr>
+<tr><td>80800000</td><td>1000</td><td>The device tree, in RAM</td></tr>
+</tbody>
+</table>
+<ul>
+<li>The ROM holds the firmware, placed there by the host before power-on. It is not write-protected: the CPU can store into it, but no device can reach it.</li>
+<li>DMA reaches only 80022000 to 81000000. Every ring, queue and buffer handed to a device must lie there.</li>
+<li>The device tree is a standard flattened tree (version 17) of everything in this table, written before every reset. Nothing in it is needed if the addresses here are used.</li>
+</ul>
+<h3>Access rules</h3>
+<ul>
+<li>Any alignment works, and nothing traps.</li>
+<li>An address that is neither RAM nor a device is taken as 80000000: a stray or null pointer silently writes over the reset vector.</li>
+<li>Device registers decode exact offsets. A read of any other offset gives 0, and a write is dropped.</li>
+<li>A device sees no access width: a load is cut to its size after the read, and a store's value is cut by the device. Use the width each register names.</li>
+<li>lh and lhu are done as two byte reads, so never use them on a device.</li>
+</ul>
+<h2 id="interrupts">Interrupts</h2>
+<p>The plic gathers the device lines into mip.MEIP. All sources
+are level-triggered: a source is pending while its line is
+high and it is not claimed.</p>
+<table>
+<thead>
+<tr><th>Source</th><th>Device</th></tr>
+</thead>
+<tbody>
+<tr><td>1</td><td>Virtio 0: host directory</td></tr>
+<tr><td>2</td><td>Virtio 1: network</td></tr>
+<tr><td>3</td><td>Virtio 2: keyboard</td></tr>
+<tr><td>4</td><td>Virtio 3: sound</td></tr>
+<tr><td>5</td><td>Virtio 4: display</td></tr>
+<tr><td>A</td><td>Serial line, receive</td></tr>
+<tr><td>21</td><td>NVMe (PCI slot 1, INTA)</td></tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr><th>Offset</th><th>Register</th></tr>
+</thead>
+<tbody>
+<tr><td>0 + 4 * id</td><td>Priority of source id, 0 to 7; 0 is never</td></tr>
+<tr><td>1000</td><td>Pending, one bit per source, three words</td></tr>
+<tr><td>2000</td><td>Enable for machine mode, three words</td></tr>
+<tr><td>200000</td><td>Threshold, 0 to 7</td></tr>
+<tr><td>200004</td><td>Read: claim, the best source or 0. Write: complete that source</td></tr>
+</tbody>
+</table>
+<ul>
+<li>Sources 1 to 5F, 95 of them; all 32-bit registers, all 0 at power-on.</li>
+<li>A source is delivered when it is pending, enabled, and its priority is above the threshold. The highest priority wins, then the lowest id.</li>
+<li>Claim, make the device drop its line, then complete. A line still high after the complete is pending again.</li>
+</ul>
+<h2 id="timer">Timer</h2>
+<p>The clint at 02000000 counts wall-clock time at 10 MHz.</p>
+<table>
+<thead>
+<tr><th>Offset</th><th>Width</th><th>Register</th></tr>
+</thead>
+<tbody>
+<tr><td>0</td><td>32</td><td>msip: bit 0 is mip.MSIP</td></tr>
+<tr><td>4000</td><td>64</td><td>mtimecmp, all ones at power-on</td></tr>
+<tr><td>BFF8</td><td>64</td><td>mtime, writable</td></tr>
+</tbody>
+</table>
+<ul>
+<li>mip.MTIP is high while mtime &gt;= mtimecmp. Write a later mtimecmp to clear it, or all ones to disarm it.</li>
+<li>Use sd and ld. A sw to 4000 or BFF8 sets the whole register to the zero-extended word.</li>
+</ul>
+<h2 id="clock">Clock</h2>
+<p>A goldfish real-time clock at 00101000: nanoseconds since
+1970, from the host's wall clock.</p>
+<table>
+<thead>
+<tr><th>Offset</th><th>Register</th></tr>
+</thead>
+<tbody>
+<tr><td>0</td><td>TIME_LOW, 32 bits. Read it first: it latches the high half. A write sets the time</td></tr>
+<tr><td>4</td><td>TIME_HIGH. Read it second; write it first</td></tr>
+</tbody>
+</table>
+<p>The clock has no alarm and no interrupt.</p>
+<h2 id="power">Power</h2>
+<p>One register at 00100000, written with sh: 5555 powers the
+machine off, 7777 reboots it. The host acts at the end of the
+current slice, so follow the store with a wfi loop.</p>
+<h2 id="serial-line">Serial line</h2>
+<p>A 16550 subset at 10000000, byte registers one apart. It needs
+no set-up: the baud rate is ignored, and a byte written is out
+at once.</p>
+<table>
+<thead>
+<tr><th>Offset</th><th>Register</th></tr>
+</thead>
+<tbody>
+<tr><td>0</td><td>Read: RBR, the next byte in. Write: THR, a byte out</td></tr>
+<tr><td>1</td><td>IER: bit 0 raises source A while a byte waits</td></tr>
+<tr><td>2</td><td>IIR: 4 while a byte waits, else 1</td></tr>
+<tr><td>5</td><td>LSR: 60 always (THR empty), and bit 0 while a byte waits</td></tr>
+</tbody>
+</table>
+<p>LCR, MCR, FCR and SCR are stored and do nothing. Read RBR
+until LSR bit 0 clears to drop the line.</p>
+<h2 id="virtio">Virtio</h2>
+<p>Five transports, virtio-mmio version 2 only, at 10001000 +
+1000 * i with plic source 1 + i. A transport with device id 0
+is empty: the host directory and the network are absent on
+some hosts, so read the id before using one.</p>
+<table>
+<thead>
+<tr><th>Slot</th><th>Device</th><th>Id</th><th>Queues</th></tr>
+</thead>
+<tbody>
+<tr><td>0</td><td>Host directory</td><td>9</td><td>0 requests</td></tr>
+<tr><td>1</td><td>Network</td><td>1</td><td>0 receive, 1 transmit</td></tr>
+<tr><td>2</td><td>Keyboard</td><td>12</td><td>0 events, 1 status</td></tr>
+<tr><td>3</td><td>Sound</td><td>19</td><td>0 control, 1 events, 2 transmit, 3 receive</td></tr>
+<tr><td>4</td><td>Display</td><td>10</td><td>0 control, 1 cursor</td></tr>
+</tbody>
+</table>
+<h3>The transport</h3>
+<table>
+<thead>
+<tr><th>Offset</th><th>Register</th></tr>
+</thead>
+<tbody>
+<tr><td>0</td><td>Magic 74726976</td></tr>
+<tr><td>4</td><td>Version 2</td></tr>
+<tr><td>8</td><td>Device id</td></tr>
+<tr><td>10, 14</td><td>Device features, and its select (0 or 1)</td></tr>
+<tr><td>20, 24</td><td>Driver features, and its select</td></tr>
+<tr><td>30</td><td>Queue select</td></tr>
+<tr><td>34</td><td>Queue size max: 128 entries</td></tr>
+<tr><td>38</td><td>Queue size, a power of two</td></tr>
+<tr><td>44</td><td>Queue ready</td></tr>
+<tr><td>50</td><td>Notify: write the queue's index</td></tr>
+<tr><td>60</td><td>Interrupt status: 1 used ring, 2 config</td></tr>
+<tr><td>64</td><td>Interrupt ack: write the bits to clear</td></tr>
+<tr><td>70</td><td>Status</td></tr>
+<tr><td>80, 84</td><td>Descriptor table, low and high</td></tr>
+<tr><td>90, 94</td><td>Available ring, low and high</td></tr>
+<tr><td>A0, A4</td><td>Used ring, low and high</td></tr>
+<tr><td>100</td><td>The device's configuration</td></tr>
+</tbody>
+</table>
+<ul>
+<li>Bring-up: status 0, then 1 (acknowledge), 2 (driver); write the features; 8 (features ok) and read it back; set up each queue; 4 (driver ok).</li>
+<li>The device offers its own bits and VERSION_1 (bit 32, select 1), which the driver must take. No indirect descriptors, no event index.</li>
+<li>Queues are split rings. The descriptor table is 16-aligned, the available ring 2-aligned, the used ring 4-aligned, all in DMA memory. Write the low address half before the high one.</li>
+<li>Descriptor: le64 address, le32 length, le16 flags (1 next, 2 device-writable), le16 next. A chain lists what the device reads first, then what it writes.</li>
+<li>A bad chain or queue sets status bit 40 (needs reset), and the device stops until status is written 0.</li>
+<li>The line is high while the interrupt status is not 0. Polling the used ring works as well.</li>
+</ul>
+<h3>Keyboard</h3>
+<ul>
+<li>Event: le16 type, le16 code, le32 value, one to each buffer posted on queue 0. A key gives type 1 (EV_KEY) with value 1 down, 0 up, 2 repeat, then type 0 (sync).</li>
+<li>The codes are Linux evdev positions for a US board: 1 esc, 2-B digits, 1C enter, 1D left ctrl, 2A left shift, 38 left alt, 39 space, 3B-44 F1-F10, 57-58 F11-F12, 61 right ctrl, 64 right alt, 66-6F home, up, page up, left, right, end, down, page down, insert, delete. Characters and modifiers are the driver's.</li>
+<li>Queue 1 buffers come straight back.</li>
+</ul>
+<h3>Display</h3>
+<p>virtio-gpu, 2D only. The screen is 780 x 520 times a scale of
+1 or 2, or 0 x 0 with no window. Pixels are 32-bit B8G8R8X8, a
+little-endian xrgb word.</p>
+<p>Every request starts with a 24-byte header: le32 type, le32
+flags, le64 fence, le32 context, u8 ring, padding. The reply
+is a header of its own, 1100 when all is well.</p>
+<table>
+<thead>
+<tr><th>Type</th><th>Request and its fields after the header</th></tr>
+</thead>
+<tbody>
+<tr><td>100</td><td>Display info: reply 1101 then 16 modes of {x, y, w, h, enabled, flags}; mode 0 is the screen</td></tr>
+<tr><td>101</td><td>Create 2D: id, format 2, width, height</td></tr>
+<tr><td>106</td><td>Attach backing: id, count (1 to 16), then {le64 address, le32 length, pad} each</td></tr>
+<tr><td>103</td><td>Set scanout: x, y, w, h, scanout 0, id</td></tr>
+<tr><td>105</td><td>Transfer to host: x, y, w, h, le64 offset, id, pad</td></tr>
+<tr><td>104</td><td>Flush: x, y, w, h, id, pad</td></tr>
+<tr><td>102</td><td>Unref: id, pad</td></tr>
+<tr><td>107</td><td>Detach backing: id, pad</td></tr>
+</tbody>
+</table>
+<ul>
+<li>Up to 8 resources of up to 1560 x 1040.</li>
+<li>A transfer copies row y of the rectangle from the backing at offset + y * width * 4: give the offset of the rectangle's first pixel yourself.</li>
+<li>Errors: 1200 unspecified, 1201 out of memory, 1202 bad scanout, 1203 bad resource, 1205 bad parameter.</li>
+</ul>
+<h3>Sound</h3>
+<p>virtio-sound with one output stream, id 0: signed 16-bit mono
+at 48 kHz, nothing else. Control requests go on queue 0 and
+start with le32 code, replies with le32 status: 8000 ok, 8001
+bad message, 8002 not supported, 8003 I/O error.</p>
+<table>
+<thead>
+<tr><th>Code</th><th>Request</th></tr>
+</thead>
+<tbody>
+<tr><td>101</td><td>Set params: stream, buffer bytes, period bytes, features, then u8 channels 1, format 5, rate 7, pad</td></tr>
+<tr><td>102</td><td>Prepare: stream</td></tr>
+<tr><td>104</td><td>Start: stream</td></tr>
+<tr><td>105</td><td>Stop: stream</td></tr>
+<tr><td>103</td><td>Release: stream</td></tr>
+<tr><td>100</td><td>Info: start, count, size; one 32-byte record</td></tr>
+</tbody>
+</table>
+<ul>
+<li>Play by posting chains on queue 2: le32 stream 0 and the samples, then 8 writable bytes for le32 status and le32 latency. A buffer comes back when the host has played it, and that is the only clock the stream has.</li>
+<li>Buffers are taken once the stream is prepared.</li>
+</ul>
+<h3>Network</h3>
+<p>virtio-net, feature MAC (bit 5) only. The configuration holds
+the MAC 52:54:00:12:34:56. Every frame has a 12-byte header in
+front of it, all zero but for a 1 at byte 10 on receive.
+Frames are Ethernet without the checksum, up to 1514 bytes.</p>
+<p>The host answers as a small router:</p>
+<ul>
+<li>The guest is 10.0.2.15, the host 10.0.2.2 (MAC 52:55:0A:00:02:02). Only ARP requests for 10.0.2.2 are answered.</li>
+<li>UDP only, unfragmented. Datagrams to 10.0.2.2 reach the host's 127.0.0.1; to any address outside 10.0.2.x they go out to it through a host socket.</li>
+<li>No TCP, ICMP, DHCP or DNS of its own.</li>
+</ul>
+<h3>Host directory</h3>
+<p>virtio-9p over the directory aldan in the host user's home.
+The configuration is le16 length then the tag &quot;aldan&quot;. One
+request to a chain: the message, then room for the reply.</p>
+<ul>
+<li>9P2000.L only, msize 4096 to 65536. Version first.</li>
+<li>Messages: version, attach, walk (16 names at most), lopen, lcreate, read, write, readdir, getattr, setattr (size only), mkdir, unlinkat, renameat, fsync, flush, clunk. Any other gets Rlerror EOPNOTSUPP.</li>
+<li>A name is one component: no slash, not . or .. — nothing above the directory can be reached. Symlinks are listed but cannot be opened.</li>
+<li>A write's size field counts its data descriptors too.</li>
+</ul>
+<h2 id="disk">Disk</h2>
+<p>An NVMe controller at PCI 00:01.0, reached through ECAM at
+30000000 + device * 8000, so its configuration is at 30008000.
+Device 0 is a host bridge; nothing else is on the bus.</p>
+<table>
+<thead>
+<tr><th>Offset</th><th>Register</th></tr>
+</thead>
+<tbody>
+<tr><td>0</td><td>Id 00101B36</td></tr>
+<tr><td>4</td><td>Command: 2 memory, 4 bus master, 400 INTx off</td></tr>
+<tr><td>8</td><td>Class 010802</td></tr>
+<tr><td>10, 14</td><td>BAR0, 64-bit, 4000 bytes; nothing assigned at reset</td></tr>
+</tbody>
+</table>
+<p>Bring-up: write BAR0 = 40000000 and BAR1 = 0, set command to
+6, then use the controller's registers at 40000000.
+Configuration stores are whole words.</p>
+<table>
+<thead>
+<tr><th>Offset</th><th>Register</th></tr>
+</thead>
+<tbody>
+<tr><td>0</td><td>CAP: queues of up to 64 entries, doorbell stride 4, 4 KB pages</td></tr>
+<tr><td>14</td><td>CC: write 00460001 to enable</td></tr>
+<tr><td>1C</td><td>CSTS: bit 0 ready, bit 1 fatal</td></tr>
+<tr><td>24</td><td>AQA: admin completion size - 1 at 16, admin submission size - 1 at 0</td></tr>
+<tr><td>28, 30</td><td>ASQ, ACQ: 64-bit page addresses</td></tr>
+<tr><td>1000</td><td>Doorbells: admin submission tail, admin completion head, then the same for queue 1</td></tr>
+</tbody>
+</table>
+<ul>
+<li>Ready is set the moment CC is enabled.</li>
+<li>Two queues only: admin 0 and one I/O pair 1, each 2 to 64 entries, page-aligned and contiguous. Submission entries are 64 bytes, completions 16.</li>
+<li>Admin: 05 creates I/O completion queue 1, then 01 its submission queue. Both take PRP1 = the queue's page and CDW10 = (size - 1) &lt;&lt; 16 | 1; CDW11 is 1 for the completion queue (3 with interrupts) and 10001 for the submission queue. The admin completion queue always interrupts. There is no Identify and no Set Features: every other admin command fails with status 1.</li>
+<li>I/O on namespace 1, 512-byte blocks: 02 read, 01 write, 00 flush. CDW10-11 the first block, CDW12 the block count less one. The capacity is the image's size; keep it in your own superblock.</li>
+<li>PRP1 is any 4-aligned address. Past one page PRP2 is the next page, past two a list of page addresses.</li>
+<li>Completion: DW2 = submission head, DW3 = command id, the phase in bit 16 and the status above it. The phase starts at 1 and flips at every wrap.</li>
+<li>The line, source 21, is high while a completion queue with interrupts on has entries the head has not passed.</li>
+</ul>
+</body>
+</html>

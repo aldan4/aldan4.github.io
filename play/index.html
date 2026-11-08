@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>aldan 4: in the browser</title>
+<meta name="author" content="ortfero">
+<link rel="stylesheet" href="../assets/style.css">
+<style>
+  body { max-width: 1560px; }
+  #canvas {
+    display: block;
+    width: 100%;
+    aspect-ratio: 3 / 2;
+    background-color: #1a0800;
+    /* an outline, not a border: SDL sizes the backing store from the
+       canvas's box, and a border would make it 2px larger than shown */
+    outline: 1px solid #ff8c1a;
+    outline-offset: 0;
+    /* when the browser does stretch the backing store, keep pixels square */
+    image-rendering: pixelated;
+  }
+  /* fullscreen is the box around the canvas, not the canvas: the canvas
+     keeps its 3:2 shape, centred, and sdl sizes its pixels from it */
+  #screen:fullscreen {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #1a0800;
+  }
+  #screen:fullscreen #canvas {
+    width: auto;
+    height: 100%;
+    max-width: 100%;
+    outline: none;
+  }
+  #start, #full {
+    font: inherit;
+    color: #1a0800;
+    background-color: #ff8c1a;
+    border: none;
+    padding: 0.3em 1em;
+    cursor: pointer;
+  }
+  #start:disabled, #full:disabled { opacity: 0.4; cursor: default; }
+  #bar { min-height: 2.2em; }
+</style>
+</head>
+<body>
+<h1><a href="../">aldan 4</a> in the browser</h1>
+<p id="bar"><button id="start" disabled>start</button> <button id="full" hidden>fullscreen</button> <span id="status">loading</span></p>
+<div id="screen"><canvas id="canvas" tabindex="0" oncontextmenu="event.preventDefault()"></canvas></div>
+<p>click the screen to type. nothing is saved: a reload boots a fresh disk.</p>
+<p>the browser keeps ctrl+tab and ctrl+shift+tab for its own tabs: here
+ctrl+. and ctrl+, go to the pane to the right and to the left.</p>
+
+<script>
+  var canvas = document.getElementById('canvas');
+  var start = document.getElementById('start');
+  var statusLine = document.getElementById('status');
+  var full = document.getElementById('full');
+
+  function say(text) { statusLine.textContent = text; }
+
+  // The emulator runs once its runtime is up, the disk is here and the user
+  // has pressed start: the press is the gesture the browser wants before it
+  // plays any sound, and it puts the keyboard on the canvas.
+  var runtime = new Promise(function (resolve) {
+    window.Module = {
+      canvas: canvas,
+      print: function (line) { console.log(line); },
+      printErr: function (line) { console.warn(line); },
+      onRuntimeInitialized: resolve,
+      onBooted: function () { say(''); },
+      onStopped: function () { say('the machine stopped. reload the page to start it again.'); },
+      onAbort: function (what) { say('the emulator failed: ' + what); }
+    };
+  });
+
+  // Fetches disk.img with a progress count, since it is most of the download.
+  function fetchDisk() {
+    return fetch('disk.img').then(function (response) {
+      if (!response.ok) throw new Error('disk.img: ' + response.status);
+      var total = Number(response.headers.get('content-length')) || 0;
+      if (!response.body || !total) return response.arrayBuffer().then(function (b) { return new Uint8Array(b); });
+      var reader = response.body.getReader();
+      var bytes = new Uint8Array(total);
+      var got = 0;
+      function pump() {
+        return reader.read().then(function (step) {
+          if (step.done) return bytes.subarray(0, got);
+          bytes.set(step.value, got);
+          got += step.value.length;
+          say('loading disk ' + Math.floor(got * 100 / total) + '%');
+          return pump();
+        });
+      }
+      return pump();
+    });
+  }
+
+  Promise.all([fetchDisk(), runtime]).then(function (results) {
+    var disk = results[0];
+    say('ready');
+    start.disabled = false;
+    start.onclick = function () {
+      start.disabled = true;
+      start.hidden = true;
+      Module.FS.writeFile('/disk.img', disk);
+      disk = null;
+      say('booting');
+      canvas.focus();
+      Module.callMain([]);
+      full.hidden = false;
+    };
+  }).catch(function (error) {
+    say('could not load: ' + error.message);
+  });
+
+  // Fullscreen with the keyboard locked: the one way a page gets the keys a
+  // browser keeps for its tabs (ctrl+tab, ctrl+shift+tab, ctrl+w), which
+  // loom uses for its panes. Keyboard lock is chromium's; elsewhere the
+  // fullscreen still works and those keys stay the browser's.
+  full.onclick = function () {
+    document.getElementById('screen').requestFullscreen().then(function () {
+      if (navigator.keyboard && navigator.keyboard.lock) return navigator.keyboard.lock();
+    }).catch(function (error) {
+      say('fullscreen: ' + error.message);
+    }).then(function () { canvas.focus(); });
+  };
+  document.addEventListener('fullscreenchange', function () {
+    if (!document.fullscreenElement && navigator.keyboard && navigator.keyboard.unlock)
+      navigator.keyboard.unlock();
+    // sdl sizes the canvas's pixels on a window resize; not every browser
+    // sends one for a fullscreen change, so make sure it hears of it.
+    requestAnimationFrame(function () { window.dispatchEvent(new Event('resize')); });
+    canvas.focus();
+  });
+
+  canvas.addEventListener('mousedown', function () { canvas.focus(); });
+  canvas.addEventListener('touchstart', function () { canvas.focus(); }, { passive: true });
+</script>
+<script async src="aldan.js"></script>
+</body>
+</html>
